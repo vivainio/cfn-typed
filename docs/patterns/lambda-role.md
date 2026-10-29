@@ -8,7 +8,8 @@ interesting part is the extra permissions, so that is the argument.
 ```
 
 Use it by passing the statements the function needs. The action sets below are samples to
-copy and adjust, kept in `examples/permissions.py`; they are not part of the library:
+copy and adjust, kept in `examples/permissions.py`. They are built from the
+[permission names](../permissions.md), so a typo in an action is an error:
 
 ```python
 --8<-- "examples/permissions.py:permissions"

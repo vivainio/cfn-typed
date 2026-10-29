@@ -64,6 +64,23 @@ def render(schema: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def permissions_page() -> str:
+    """Every permission name, straight from the module, so the list cannot drift from the code."""
+    from cfn_typed import permissions
+
+    lines = [
+        "# Permission names",
+        "",
+        "Every name in `cfn_typed.permissions`, copied from the [AWS CDK](https://github.com/aws/aws-cdk) "
+        "(Apache-2.0). See [Permission names](../permissions.md) for how they are chosen and credited.",
+        "",
+    ]
+    for name, cls in sorted((n, c) for n, c in vars(permissions).items() if isinstance(c, type)):
+        items = sorted((k, v) for k, v in vars(cls).items() if not k.startswith("_") and isinstance(v, str))
+        lines += [f"## {name}", "", "| Name | Action |", "|---|---|", *[f"| `{name}.{k}` | `{v}` |" for k, v in items], ""]
+    return "\n".join(lines)
+
+
 def main() -> None:
     wanted = [t for t in (ROOT / "examples" / "types.txt").read_text().split("\n") if t and not t.startswith("#")]
     schemas = typegen.select(typegen.load_schemas(typegen.ensure_schemas(typegen.CACHE)), wanted)
@@ -73,6 +90,8 @@ def main() -> None:
         slug = re.sub(r"\W+", "-", schema["typeName"].replace("AWS::", "")).lower()
         (OUT / f"{slug}.md").write_text(render(schema))
         index.append(f"- [{schema['typeName']}]({slug}.md)")
+    (OUT / "permissions.md").write_text(permissions_page())
+    index.append("- [Permission names](permissions.md)")
     (OUT / "index.md").write_text("\n".join(index) + "\n")
     print(f"wrote {len(schemas)} reference pages to {OUT}")
 

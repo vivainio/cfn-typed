@@ -84,6 +84,13 @@ Commit the rendered YAML and let CI check that the code still renders exactly th
 `CFN_TYPED_UPDATE=1` to accept an intended change. See the book. This repo does it for its own
 examples (`examples/rendered/`).
 
+## Permission names
+
+`cfn_typed.permissions` gives IAM actions names, so `Sqs.ReceiveMessage` replaces the string
+`"sqs:ReceiveMessage"` and a typo is an attribute error. The names are copied from the
+[AWS CDK](https://github.com/aws/aws-cdk) (Apache-2.0, credited in `NOTICE`), for the major services,
+by `scripts/sync-cdk-permissions.py` at a pinned commit. See the book.
+
 ## Patterns
 
 Helper functions that return a resource or a small fragment (a queue with its

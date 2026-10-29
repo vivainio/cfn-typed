@@ -27,6 +27,7 @@ nav = [
     { "Composing fragments" = "patterns/composing.md" },
     { "A complete stack" = "patterns/complete-stack.md" },
   ] },
+  { "Permission names" = "permissions.md" },
   { "Rendered examples" = [
     { "Overview" = "rendered/index.md" },
     { "Minimal stack" = "rendered/minimal.md" },

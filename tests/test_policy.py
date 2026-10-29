@@ -3,7 +3,7 @@ from typing import Any, cast
 import pytest
 
 import cfn_typed as cfn
-from cfn_typed import allow, deny, grants, policy_document
+from cfn_typed import NotActionStatement, Statement, allow, assume_role_policy, deny, grants, policy_document
 from cfn_typed.policy import (
     ANY, GlobalKeys, arn_like, aws, bool_, condition, ip_address, merge_conditions, service, string_equals, string_like,
 )
@@ -110,3 +110,45 @@ def test_a_resource_policy_goes_into_a_policy_document() -> None:
     ])
     assert [s.get("Sid") for s in document["Statement"]] == ["NoPlainHttp", None]
     assert "Principal:" in cfn.to_yaml({"Resources": {}, "Mappings": {"P": dict(document)}})
+
+
+def test_not_actions_make_the_other_statement_form() -> None:
+    everything_but_iam = deny(not_actions=["iam:*"], resource="*", sid="OnlyIam")
+    assert everything_but_iam == {"Sid": "OnlyIam", "Effect": "Deny", "NotAction": ["iam:*"], "Resource": "*"}
+    assert "Action" not in everything_but_iam
+    assert allow(not_actions="s3:*", not_resource=["arn:b"]) == {"Effect": "Allow", "NotAction": "s3:*", "NotResource": ["arn:b"]}
+
+
+def test_every_statement_field_keeps_the_iam_order() -> None:
+    full = allow("a:b", "arn:r", sid="S", principal=aws("arn:p"), condition=bool_("k", True))
+    assert list(full) == ["Sid", "Effect", "Principal", "Action", "Resource", "Condition"]
+    odd = deny(not_actions="a:b", not_resource="arn:r", sid="S", not_principal=aws("arn:p"), condition=bool_("k", True))
+    assert list(odd) == ["Sid", "Effect", "NotPrincipal", "NotAction", "NotResource", "Condition"]
+
+
+def test_either_or_pairs_are_either_or() -> None:
+    loose_allow: Any = allow  # the type checker rejects these calls (tests/test_policy_types.py); at runtime they raise too
+    loose_deny: Any = deny
+    with pytest.raises(ValueError, match="either `actions` or `not_actions`"):
+        loose_allow("a:b", not_actions="c:d")
+    with pytest.raises(ValueError, match="either `actions` or `not_actions`"):
+        loose_deny()
+    with pytest.raises(ValueError, match="either `resource` or `not_resource`"):
+        allow("a:b", "arn:r", not_resource="arn:s")
+    with pytest.raises(ValueError, match="either `principal` or `not_principal`"):
+        deny("a:b", principal=ANY, not_principal=aws("arn:p"))
+
+
+def test_the_constructors_give_the_same_dicts_as_the_builders() -> None:
+    assert Statement(Effect="Allow", Action=["a:b"], Resource="arn:r") == allow(["a:b"], "arn:r")
+    assert NotActionStatement(Effect="Deny", NotAction=["a:b"]) == deny(not_actions=["a:b"])
+
+
+def test_assume_role_policy() -> None:
+    assert assume_role_policy(service("lambda.amazonaws.com")) == {
+        "Version": "2012-10-17",
+        "Statement": [{"Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": ["sts:AssumeRole"]}],
+    }
+    cross = assume_role_policy(aws("arn:root"), condition=string_equals("sts:ExternalId", "x"), sid="Partner")
+    [statement] = cross["Statement"]
+    assert statement["Sid"] == "Partner" and statement["Condition"] == {"StringEquals": {"sts:ExternalId": "x"}}

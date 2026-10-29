@@ -14,6 +14,38 @@ allow("kms:*", "*", sid="EnableIam", principal=aws(root_arn))              # a k
 deny("s3:*", [bucket_arn], principal=ANY, condition=bool_(GlobalKeys.SecureTransport, False))
 ```
 
+## Statements are plain dicts, and checked
+
+You can write a statement three ways, and all of them give the same plain dict:
+
+```python
+allow(["sqs:ReceiveMessage"], queue_arn)                                       # the builder
+Statement(Effect="Allow", Action=["sqs:ReceiveMessage"], Resource=queue_arn)  # the constructor, awacs-style
+{"Effect": "Allow", "Action": ["sqs:ReceiveMessage"], "Resource": queue_arn}  # a literal
+```
+
+The type checker checks the last two as well as the builder. A misspelled key (`Efect`, with a "did you mean"
+hint for the constructor), a bad `Effect` and a missing `Action` are errors before anything runs. A statement is
+one of two closed shapes, because IAM allows `Action` or `NotAction`, never both:
+
+| Type | Has | Made by |
+|---|---|---|
+| `Statement` | `Action` | `allow(actions)`, `deny(actions)` |
+| `NotActionStatement` | `NotAction` | `allow(not_actions=...)`, `deny(not_actions=...)` |
+
+`AnyStatement` is either one, and is what `policy_document` takes. A literal with neither `Action` nor `NotAction`, or with
+both, is an error. `Resource` and `NotResource`, and `Principal` and `NotPrincipal`, are also either/or in IAM; the
+builders refuse both at once, but the types leave them as optional keys.
+
+## The `Not` forms
+
+`deny(not_actions=[...])` denies everything except the listed actions, which is how to say "nothing but these". The
+other fields have the same shape: `not_resource` and `not_principal`.
+
+```python
+deny(not_actions=["iam:*", "sts:*"], resource="*", condition=bool_("aws:MultiFactorAuthPresent", False, if_exists=True))
+```
+
 ## Principals
 
 | Helper | Gives |
@@ -83,6 +115,21 @@ Two rules keep resource policies honest:
   resource, so for a key policy you build the key statement yourself, from the grant's `key_actions`.
 - **`condition` goes on the main statement,** and `key_condition` on the key statement of an identity grant, for
   conditions such as `kms:ViaService` that belong to the key.
+
+## Trust policies
+
+A role's trust policy says who may assume it. `assume_role_policy` builds it:
+
+```python
+from cfn_typed import assume_role_policy
+from cfn_typed.policy import aws, service, string_equals
+
+assume_role_policy(service("lambda.amazonaws.com"))
+assume_role_policy(aws(partner_account_root), condition=string_equals("sts:ExternalId", external_id))
+```
+
+It is a one-statement policy document with `sts:AssumeRole`, ready for `AssumeRolePolicyDocument`. The service principal
+is a plain string that you write; there is no list of service names to go stale.
 
 ## ARNs
 

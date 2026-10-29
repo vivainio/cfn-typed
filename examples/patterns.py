@@ -1,35 +1,28 @@
 """Pattern helpers shown in the book (docs/). Sections feed the pages via pymdownx.snippets."""
 
 # --8<-- [start:imports]
+from collections.abc import Sequence
+
 from cfn_types import iam, lambda_, sqs
 
-from cfn_typed import AnyResource, Expr, Resources, Statement, Tag, allow, arn, get_att
+from cfn_typed import AnyResource, AnyStatement, Expr, Resources, Tag, allow, arn, assume_role_policy, get_att, policy_document
+from cfn_typed.policy import service
 
 # --8<-- [end:imports]
 
 
 # --8<-- [start:lambda_role]
-def lambda_role(name_prefix: str, extra: list[Statement]) -> iam.Role:
+def lambda_role(name_prefix: str, extra: Sequence[AnyStatement]) -> iam.Role:
     """Execution role for a Lambda: log permissions plus the `extra` statements."""
     log_arn = arn("logs", f"log-group:/aws/lambda/{name_prefix}*:*")
     return iam.role(
-        AssumeRolePolicyDocument={
-            "Version": "2012-10-17",
-            "Statement": [{
-                "Effect": "Allow",
-                "Principal": {"Service": ["lambda.amazonaws.com"]},
-                "Action": ["sts:AssumeRole"],
-            }],
-        },
+        AssumeRolePolicyDocument=assume_role_policy(service("lambda.amazonaws.com")),
         Policies=[iam.RolePolicy(
             PolicyName=f"{name_prefix}-lambda",
-            PolicyDocument={
-                "Version": "2012-10-17",
-                "Statement": [
-                    allow(["logs:CreateLogStream", "logs:CreateLogGroup", "logs:PutLogEvents"], [log_arn]),
-                    *extra,
-                ],
-            },
+            PolicyDocument=policy_document([
+                allow(["logs:CreateLogStream", "logs:CreateLogGroup", "logs:PutLogEvents"], [log_arn]),
+                *extra,
+            ]),
         )],
     )
 # --8<-- [end:lambda_role]

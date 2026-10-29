@@ -3,6 +3,7 @@
 import cfn_typed as cfn
 from cfn_types import iam
 from cfn_typed import grants
+from cfn_typed.policy import service
 from data_platform import PREFIX
 
 
@@ -20,14 +21,7 @@ def build() -> cfn.Template:
         "Resources": {
             "ReaderRole": iam.role(
                 RoleName="data-platform-reader",  # matches the producer's allowed-principals pattern
-                AssumeRolePolicyDocument={
-                    "Version": "2012-10-17",
-                    "Statement": [{
-                        "Effect": "Allow",
-                        "Principal": {"Service": ["lambda.amazonaws.com"]},
-                        "Action": ["sts:AssumeRole"],
-                    }],
-                },
+                AssumeRolePolicyDocument=cfn.assume_role_policy(service("lambda.amazonaws.com")),
                 Policies=[iam.RolePolicy(PolicyName="read-data", PolicyDocument=cfn.policy_document(statements))],
             ),
         },

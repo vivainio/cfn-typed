@@ -105,8 +105,10 @@ Copied from the CDK (Apache-2.0, credited in `NOTICE`) by `scripts/sync-cdk-gran
 
 ## Policy statements
 
-`cfn_typed.policy` builds IAM statements with principals and conditions (`allow`, `deny`, `aws(...)`,
-`arn_like(...)`), and grants become resource-policy statements when you give them a `principal`. See the book.
+`cfn_typed.policy` builds IAM statements with principals, conditions and the `Not` forms (`allow`, `deny`, `aws(...)`,
+`arn_like(...)`, `assume_role_policy`), and grants become resource-policy statements when you give them a `principal`.
+Statements are plain dicts that the type checker checks, whether you use the builders, `Statement(...)` or a literal.
+See the book.
 
 ## Patterns
 

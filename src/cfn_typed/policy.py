@@ -6,21 +6,25 @@
     allow(["sqs:ReceiveMessage"], queue_arn)                               # identity policy: no principal
     allow("kms:*", "*", sid="EnableIam", principal=aws(root_arn))          # key policy: Resource is "*"
     deny("s3:*", [bucket_arn], principal=ANY, condition=bool_("aws:SecureTransport", False))
+    deny(not_actions=["iam:*"], resource="*")                              # everything except IAM
 
 Statements are plain dicts in the order IAM documents (Sid, Effect, Principal, Action, Resource, Condition), so
-the rendered template reads like a policy. Nothing here is opinion: it builds what you describe. Which actions
-belong together is the job of `cfn_typed.grants`.
+the rendered template reads like a policy, and you can write them as dict literals or call `Statement(...)` directly:
+both are checked by the type checker. Nothing here is opinion: it builds what you describe. Which actions belong
+together is the job of `cfn_typed.grants`.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
-from typing import Any, Final, Literal, NotRequired, TypedDict, Unpack, cast
+from typing import Any, Final, Literal, NotRequired, cast, overload
+
+from typing_extensions import TypedDict, Unpack
 
 from cfn_typed.intrinsics import Expr
 
 ANY: Final = "*"  # every principal, as in `Principal: "*"`
 
 
-class PrincipalMap(TypedDict):
+class PrincipalMap(TypedDict, closed=True):
     AWS: NotRequired[Expr[str] | list[Expr[str]]]
     Service: NotRequired[Expr[str] | list[Expr[str]]]
     Federated: NotRequired[Expr[str] | list[Expr[str]]]
@@ -29,23 +33,42 @@ class PrincipalMap(TypedDict):
 
 type Principal = Literal["*"] | PrincipalMap
 type Condition = Mapping[str, Mapping[str, Expr[str] | list[Expr[str]]]]
+type ResourceArg = Expr[str] | list[Expr[str]] | None
 
 
-class Statement(TypedDict):
+# IAM allows `Action` or `NotAction`, never both, so a statement is one of two closed TypedDicts. A dict literal that
+# has neither, both, or a misspelled key is an error in the type checker.
+class Statement(TypedDict, closed=True):
     Sid: NotRequired[str]
     Effect: Literal["Allow", "Deny"]
     Principal: NotRequired[Principal]
+    NotPrincipal: NotRequired[Principal]
     Action: str | list[str]
     Resource: NotRequired[Expr[str] | list[Expr[str]]]
+    NotResource: NotRequired[Expr[str] | list[Expr[str]]]
     Condition: NotRequired[Condition]
 
 
-class PolicyDocument(TypedDict):
+class NotActionStatement(TypedDict, closed=True):
+    Sid: NotRequired[str]
+    Effect: Literal["Allow", "Deny"]
+    Principal: NotRequired[Principal]
+    NotPrincipal: NotRequired[Principal]
+    NotAction: str | list[str]
+    Resource: NotRequired[Expr[str] | list[Expr[str]]]
+    NotResource: NotRequired[Expr[str] | list[Expr[str]]]
+    Condition: NotRequired[Condition]
+
+
+type AnyStatement = Statement | NotActionStatement
+
+
+class PolicyDocument(TypedDict, closed=True):
     Version: Literal["2012-10-17"]
-    Statement: list[Statement]
+    Statement: list[AnyStatement]
 
 
-def policy_document(statements: Iterable[Statement]) -> PolicyDocument:
+def policy_document(statements: Iterable[AnyStatement]) -> PolicyDocument:
     """A policy document for a role's inline policy, a managed policy, a bucket policy, ..."""
     return {"Version": "2012-10-17", "Statement": list(statements)}
 
@@ -77,46 +100,129 @@ def service(*names: Expr[str]) -> PrincipalMap:
 
 def _statement(
     effect: Literal["Allow", "Deny"],
-    actions: str | Sequence[str],
-    resource: Expr[str] | list[Expr[str]] | None,
+    actions: str | Sequence[str] | None,
+    not_actions: str | Sequence[str] | None,
+    resource: ResourceArg,
+    not_resource: ResourceArg,
     sid: str | None,
     principal: Principal | None,
+    not_principal: Principal | None,
     condition: Condition | None,
-) -> Statement:
+) -> Statement | NotActionStatement:
+    if (actions is None) == (not_actions is None):
+        raise ValueError("give either `actions` or `not_actions`, not both and not neither")
+    if resource is not None and not_resource is not None:
+        raise ValueError("give either `resource` or `not_resource`, not both")
+    if principal is not None and not_principal is not None:
+        raise ValueError("give either `principal` or `not_principal`, not both")
+
+    def listed(value: str | Sequence[str] | None) -> str | list[str] | None:
+        return None if value is None else value if isinstance(value, str) else list(value)
+
     parts: list[tuple[str, Any]] = [
         ("Sid", sid),
         ("Effect", effect),
         ("Principal", principal),
-        ("Action", actions if isinstance(actions, str) else list(actions)),
+        ("NotPrincipal", not_principal),
+        ("Action", listed(actions)),
+        ("NotAction", listed(not_actions)),
         ("Resource", resource),
+        ("NotResource", not_resource),
         ("Condition", condition),
     ]
-    return cast(Statement, {key: value for key, value in parts if value is not None})
+    out = {key: value for key, value in parts if value is not None}
+    return cast(Statement, out) if actions is not None else cast(NotActionStatement, out)
 
 
+@overload
 def allow(
     actions: str | Sequence[str],
-    resource: Expr[str] | list[Expr[str]] | None = None,
+    resource: ResourceArg = None,
     *,
+    not_resource: ResourceArg = None,
     sid: str | None = None,
     principal: Principal | None = None,
+    not_principal: Principal | None = None,
     condition: Condition | None = None,
-) -> Statement:
+) -> Statement: ...
+@overload
+def allow(
+    actions: None = None,
+    resource: ResourceArg = None,
+    *,
+    not_actions: str | Sequence[str],
+    not_resource: ResourceArg = None,
+    sid: str | None = None,
+    principal: Principal | None = None,
+    not_principal: Principal | None = None,
+    condition: Condition | None = None,
+) -> NotActionStatement: ...
+def allow(
+    actions: str | Sequence[str] | None = None,
+    resource: ResourceArg = None,
+    *,
+    not_actions: str | Sequence[str] | None = None,
+    not_resource: ResourceArg = None,
+    sid: str | None = None,
+    principal: Principal | None = None,
+    not_principal: Principal | None = None,
+    condition: Condition | None = None,
+) -> Statement | NotActionStatement:
     """An `Allow` statement. Leave out `principal` for an identity policy, and `resource` where the policy is
-    attached to what it protects and the field is not allowed (an ECR repository policy)."""
-    return _statement("Allow", actions, resource, sid, principal, condition)
+    attached to what it protects and the field is not allowed (an ECR repository policy).
+
+    Give `not_actions` instead of `actions` to allow everything except those (and `not_resource` and
+    `not_principal` likewise). IAM treats each such pair as either/or, and so does this.
+    """
+    return _statement("Allow", actions, not_actions, resource, not_resource, sid, principal, not_principal, condition)
 
 
+@overload
 def deny(
     actions: str | Sequence[str],
-    resource: Expr[str] | list[Expr[str]] | None = None,
+    resource: ResourceArg = None,
     *,
+    not_resource: ResourceArg = None,
     sid: str | None = None,
     principal: Principal | None = None,
+    not_principal: Principal | None = None,
     condition: Condition | None = None,
-) -> Statement:
-    """A `Deny` statement. An explicit deny beats every allow, wherever the allow comes from."""
-    return _statement("Deny", actions, resource, sid, principal, condition)
+) -> Statement: ...
+@overload
+def deny(
+    actions: None = None,
+    resource: ResourceArg = None,
+    *,
+    not_actions: str | Sequence[str],
+    not_resource: ResourceArg = None,
+    sid: str | None = None,
+    principal: Principal | None = None,
+    not_principal: Principal | None = None,
+    condition: Condition | None = None,
+) -> NotActionStatement: ...
+def deny(
+    actions: str | Sequence[str] | None = None,
+    resource: ResourceArg = None,
+    *,
+    not_actions: str | Sequence[str] | None = None,
+    not_resource: ResourceArg = None,
+    sid: str | None = None,
+    principal: Principal | None = None,
+    not_principal: Principal | None = None,
+    condition: Condition | None = None,
+) -> Statement | NotActionStatement:
+    """A `Deny` statement. An explicit deny beats every allow, wherever the allow comes from. With `not_actions` it
+    denies everything except those actions, the usual way to say "nothing but ..." """
+    return _statement("Deny", actions, not_actions, resource, not_resource, sid, principal, not_principal, condition)
+
+
+def assume_role_policy(principal: Principal, *, condition: Condition | None = None, sid: str | None = None) -> PolicyDocument:
+    """A trust policy: who may assume a role, as `AssumeRolePolicyDocument`.
+
+        assume_role_policy(service("lambda.amazonaws.com"))
+        assume_role_policy(aws(account_root), condition=string_equals("sts:ExternalId", external_id))
+    """
+    return policy_document([allow(["sts:AssumeRole"], principal=principal, condition=condition, sid=sid)])
 
 
 # -- conditions ------------------------------------------------------------------------------------------------

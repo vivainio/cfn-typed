@@ -98,6 +98,11 @@ returning identity-policy statements. **This layer is opinion, not fact, and is 
 types and the permission names**: it can change or move between releases, so pin the version if you rely on it.
 Copied from the CDK (Apache-2.0, credited in `NOTICE`) by `scripts/sync-cdk-grants.py`.
 
+## Policy statements
+
+`cfn_typed.policy` builds IAM statements with principals and conditions (`allow`, `deny`, `aws(...)`,
+`arn_like(...)`), and grants become resource-policy statements when you give them a `principal`. See the book.
+
 ## Patterns
 
 Helper functions that return a resource or a small fragment (a queue with its

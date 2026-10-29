@@ -50,8 +50,8 @@ grants.DynamoDb.Table.read_write_data.on(table_arn, indexes=True)
 
 ## Putting the statements somewhere
 
-The statements have **no `Principal`**. They are identity-policy statements, and a grant knows nothing about
-where they end up, so there is no side effect on a role as in the CDK:
+By default the statements have **no `Principal`**: they are identity-policy statements (give `principal=` for a
+[resource policy](policy.md#resource-policies-from-grants)), and a grant knows nothing about where they end up, so there is no side effect on a role as in the CDK:
 
 ```python
 stmts = [
@@ -80,8 +80,9 @@ YAML](rendered/sqs-worker.md) is committed, by a test failure that shows exactly
 
 ## What it does not do
 
-- **Resource policies.** A queue or bucket policy that names a principal needs a `Principal` and a different
-  `Resource`. The CDK does that in `addToPrincipalOrResource`; this layer is identity statements only.
+- **Choosing for you.** The CDK's `addToPrincipalOrResource` decides between an identity policy and a resource policy
+  by itself. Here you decide: no `principal` gives identity statements, and a `principal` gives resource-policy
+  statements, as described on the [policy page](policy.md).
 - **Service principals as grantees**, for example letting S3 invoke a Lambda. That is an `AWS::Lambda::Permission`
   resource, not a policy statement.
 - **The CDK's other behaviour.** `Table.stream_read` here grants the stream actions on the stream ARN; the CDK also

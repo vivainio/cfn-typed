@@ -30,6 +30,7 @@ nav = [
     { "A complete stack" = "patterns/complete-stack.md" },
   ] },
   { "Permission names" = "permissions.md" },
+  { "Policy statements" = "policy.md" },
   { "Grants (opinion layer)" = "grants.md" },
   { "Rendered examples" = [
     { "Overview" = "rendered/index.md" },

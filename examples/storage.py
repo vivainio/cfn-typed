@@ -3,11 +3,12 @@
 # --8<-- [start:imports]
 import re
 from collections.abc import Mapping, Sequence
-from typing import Any, Literal
+from typing import Literal
 
 from cfn_types import dynamodb, ecr, kms, s3, ssm
 
-from cfn_typed import Expr, Resources, Tag, get_att, join, ref, sub
+from cfn_typed import Expr, Resources, Tag, allow, deny, get_att, join, ref, sub
+from cfn_typed.policy import ANY, GlobalKeys, aws, bool_, string_not_like
 
 # --8<-- [end:imports]
 
@@ -25,13 +26,10 @@ def encryption_key(name: str, *, alias: str, description: str = "", tags: list[E
         "EnableKeyRotation": True,
         "KeyPolicy": {
             "Version": "2012-10-17",
-            "Statement": [{
-                "Sid": "EnableIamPolicies",
-                "Effect": "Allow",
-                "Principal": {"AWS": sub("arn:${AWS::Partition}:iam::${AWS::AccountId}:root")},
-                "Action": "kms:*",
-                "Resource": "*",  # in a key policy this is the key itself; its ARN would be a circular reference
-            }],
+            "Statement": [
+                # in a key policy Resource "*" means the key itself; naming its ARN would be a circular reference
+                allow("kms:*", "*", sid="EnableIamPolicies", principal=aws(sub("arn:${AWS::Partition}:iam::${AWS::AccountId}:root"))),
+            ],
         },
     }
     if tags:
@@ -62,24 +60,15 @@ def secure_bucket(
     """
     bucket = f"{name}Bucket"
     bucket_arn = get_att(bucket, "Arn")
-    both = [bucket_arn, join("", [bucket_arn, "/*"])]
-    statements: list[Mapping[str, Any]] = [{
-        "Sid": "DenyInsecureTransport",
-        "Effect": "Deny",
-        "Principal": "*",
-        "Action": "s3:*",
-        "Resource": both,
-        "Condition": {"Bool": {"aws:SecureTransport": "false"}},
-    }]
+    both: list[Expr[str]] = [bucket_arn, join("", [bucket_arn, "/*"])]
+    statements = [
+        deny("s3:*", both, sid="DenyInsecureTransport", principal=ANY, condition=bool_(GlobalKeys.SecureTransport, False)),
+    ]
     if allowed_principals:
-        statements.append({
-            "Sid": "DenyEveryoneElse",
-            "Effect": "Deny",
-            "Principal": "*",
-            "Action": "s3:*",
-            "Resource": both,
-            "Condition": {"StringNotLike": {"aws:PrincipalArn": list(allowed_principals)}},
-        })
+        statements.append(
+            deny("s3:*", both, sid="DenyEveryoneElse", principal=ANY,
+                 condition=string_not_like(GlobalKeys.PrincipalArn, list(allowed_principals))),
+        )
     props: s3.BucketProps = {
         "PublicAccessBlockConfiguration": {
             "BlockPublicAcls": True, "BlockPublicPolicy": True, "IgnorePublicAcls": True, "RestrictPublicBuckets": True,
@@ -145,13 +134,11 @@ def ecr_repository(
     if pull_principals:
         props["RepositoryPolicyText"] = {
             "Version": "2012-10-17",
-            "Statement": [{
-                "Sid": "AllowPull",
-                "Effect": "Allow",
-                "Principal": {"AWS": list(pull_principals)},
-                # no "Resource": a repository policy applies to the repository it is attached to
-                "Action": ["ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage", "ecr:BatchCheckLayerAvailability"],
-            }],
+            "Statement": [
+                # no Resource: a repository policy applies to the repository it is attached to
+                allow(["ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage", "ecr:BatchCheckLayerAvailability"],
+                      sid="AllowPull", principal=aws(*pull_principals)),
+            ],
         }
     if tags:
         props["Tags"] = tags

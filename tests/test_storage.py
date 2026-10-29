@@ -72,7 +72,9 @@ def test_a_repository_policy_has_no_resource_and_exists_only_with_principals() -
     assert "RepositoryPolicyText" not in plain(ecr_repository("app"))["Properties"]
     repo = plain(ecr_repository("app", pull_principals=["arn:role/pull"]))["Properties"]
     statement = repo["RepositoryPolicyText"]["Statement"][0]
-    assert "Resource" not in statement and statement["Principal"] == {"AWS": ["arn:role/pull"]}
+    assert "Resource" not in statement and statement["Principal"] == {"AWS": "arn:role/pull"}
+    two = plain(ecr_repository("app", pull_principals=["arn:role/a", "arn:role/b"]))["Properties"]
+    assert two["RepositoryPolicyText"]["Statement"][0]["Principal"] == {"AWS": ["arn:role/a", "arn:role/b"]}
     assert repo["ImageTagMutability"] == "IMMUTABLE" and repo["ImageScanningConfiguration"] == {"ScanOnPush": True}
 
 

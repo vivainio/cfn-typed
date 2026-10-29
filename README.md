@@ -91,9 +91,9 @@ examples (`examples/rendered/`).
 ## Permission names
 
 `cfn_typed.permissions` gives IAM actions names, so `Sqs.ReceiveMessage` replaces the string
-`"sqs:ReceiveMessage"` and a typo is an attribute error. The names are copied from the
-[AWS CDK](https://github.com/aws/aws-cdk) (Apache-2.0, credited in `NOTICE`), for the major services,
-by `scripts/sync-cdk-permissions.py` at a pinned commit. See the book.
+`"sqs:ReceiveMessage"` and a typo is an attribute error. The names are taken from
+[awacs](https://github.com/cloudtools/awacs) (BSD-2-Clause, credited in `NOTICE`) for 11 major services, by
+`scripts/sync-permissions.py`; awacs is used only by that script and is not a dependency. See the book.
 
 ## Grants (opinion layer)
 

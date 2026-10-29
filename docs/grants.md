@@ -6,7 +6,7 @@
     | Layer | What it is | How much to rely on it |
     |---|---|---|
     | Generated resource types | the shapes AWS publishes, regenerated from its schemas | the stable core |
-    | [Permission names](permissions.md) | the names of IAM actions, copied from the AWS CDK | stable: facts, and mostly additive |
+    | [Permission names](permissions.md) | the names of IAM actions, taken from awacs | stable: facts, and mostly additive |
     | **Grants (this page)** | which actions belong together, and on which resources | **unstable: a judgement that can change** |
 
     A grant can change whenever the AWS CDK changes its mind, can be renamed or removed in any release, and
@@ -73,7 +73,9 @@ credit is in the module docstring, in the `NOTICE` file and here. For services w
 the sets are taken as they are. For the rest (S3, DynamoDB, KMS, Kinesis, Lambda, Secrets Manager) the CDK composes
 them in code from constants, and `scripts/sync-cdk-grants.py` records how, citing the method it read.
 
-The script **refuses to emit anything it cannot find in those CDK files**, so nothing is typed in from memory.
+The script **refuses to emit anything it cannot find in those CDK files**, so nothing is typed in from memory. Exact
+actions are written as references to the [permission names](permissions.md), and a pattern such as `s3:GetObject*`
+is written out as a string, because choosing a pattern is part of the opinion.
 No CDK code or documentation text is included. Bumping the pin is a one-line change, followed by a
 reviewed diff of the generated module, and, because the example stack's [rendered
 YAML](rendered/sqs-worker.md) is committed, by a test failure that shows exactly what changed in the policy.

@@ -38,7 +38,7 @@ can drop them without touching the facts.
 | Layer | What it is | How far to rely on it |
 |---|---|---|
 | [Generated resource types](generator.md) | the shapes AWS publishes | the stable core |
-| [Permission names](permissions.md) | names of IAM actions, copied from the AWS CDK | facts: stable |
+| [Permission names](permissions.md) | names of IAM actions, taken from awacs | facts: stable |
 | [Policy statements](policy.md) | builders for principals, conditions, allow and deny | mechanics, no opinion: stable |
 | [Grants](grants.md) | the CDK's permission sets | **opinion: unstable, marked as such** |
 | [Patterns](patterns/index.md) | a secure bucket, a load balancer, ... | **opinion: examples to copy, not an API** |

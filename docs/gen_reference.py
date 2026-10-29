@@ -71,8 +71,8 @@ def permissions_page() -> str:
     lines = [
         "# Permission names",
         "",
-        "Every name in `cfn_typed.permissions`, copied from the [AWS CDK](https://github.com/aws/aws-cdk) "
-        "(Apache-2.0). See [Permission names](../permissions.md) for how they are chosen and credited.",
+        "Every name in `cfn_typed.permissions`, taken from [awacs](https://github.com/cloudtools/awacs) "
+        "(BSD-2-Clause). See [Permission names](../permissions.md) for how they are chosen and credited.",
         "",
     ]
     for name, cls in sorted((n, c) for n, c in vars(permissions).items() if isinstance(c, type)):

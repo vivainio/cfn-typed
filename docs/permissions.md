@@ -21,32 +21,29 @@ does and render exactly as before. See the [full list](reference/permissions.md)
 
 - The class is the service (`Sqs`, `S3`, `DynamoDb`, `SecretsManager`, ...) and the attribute is
   the action, written as AWS writes it.
-- A `*` in the action becomes `_All`: `S3.GetObject_All` is `s3:GetObject*`, and
-  `Kms.Create_All` is `kms:Create*`.
-- Wildcards that CDK uses are included because that is what its policies grant. Prefer the exact
-  names where you can.
+- **Only exact actions are names.** A pattern such as `s3:GetObject*` is a choice about what to grant, which
+  makes it an opinion, so it is not here: the [grants](grants.md) carry the patterns they use, as strings.
 
 ## Where the names come from
 
-**They are copied from the [AWS CDK](https://github.com/aws/aws-cdk).** cfn-typed does not
-invent a list of permissions. For the major services (S3, DynamoDB, SQS, SNS, Lambda, KMS,
-Secrets Manager, SSM, CloudWatch Logs, EventBridge and Kinesis) it takes the action names that the
-CDK itself uses when it builds the policies for `grantRead`, `grantWrite`, `grantConsumeMessages`
-and the like. The CDK is licensed under Apache-2.0, and the credit is in the module docstring, in the
-`NOTICE` file, and here.
+**They are taken from [awacs](https://github.com/cloudtools/awacs)** (BSD-2-Clause, copyright Mark Peek), a library
+that builds its lists from AWS's Service Authorization Reference. For the major services (S3, DynamoDB, SQS, SNS,
+Lambda, KMS, Secrets Manager, SSM, CloudWatch Logs, EventBridge and Kinesis) cfn-typed takes **every** exact action, 868 in
+all, so the list is complete for those services. The credit is in the module docstring, in the `NOTICE` file, with
+awacs's licence text in the package, and here.
 
-Only the names are taken: no CDK code and no documentation text. A script,
-`scripts/sync-cdk-permissions.py`, fetches CDK's own files at one pinned commit and extracts
-them, and **it refuses to emit a name that it cannot find in those files**, so nothing is typed
-in from memory. Bumping the pin is a one-line change followed by a reviewed diff.
+awacs is used **only by a maintainer script**, `scripts/sync-permissions.py`, which `uv run` gives awacs for the
+duration of the run. It is not a dependency of cfn-typed, and the generated module is committed. The script
+pins one awacs version, so bumping it is a one-line change followed by a reviewed diff. Before this, the names came from
+the AWS CDK's files; awacs is a better source for names because it is complete and comes straight from AWS's reference.
 
 ## What this is not
 
-- **Not every IAM action.** It is the set of names the CDK uses for these services. For an action that is
-  missing, write the string, as before.
+- **Not every service.** It covers the eleven services above. For any other action, write the string.
 - **Not a statement about what is safe to grant.** The names say what actions exist, not which ones belong
   together or on which resources. That is still your decision.
-- **Not checked against AWS.** If the CDK has a mistake in a name, so do we, until the next sync.
+- **Only as good as awacs.** awacs adds actions as AWS publishes them and keeps the ones it already had, so an
+  action that AWS later removes can stay in the list until it is cleaned up.
 
 ## Building your own sets
 

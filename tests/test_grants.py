@@ -1,4 +1,5 @@
 import dataclasses
+import fnmatch
 import re
 from pathlib import Path
 from typing import Any
@@ -77,13 +78,17 @@ def test_misuse_is_an_error() -> None:
         setattr(grants.Sqs.Queue.purge, "actions", ())
 
 
-def test_every_grant_is_built_from_permission_names() -> None:
-    names = {v for cls in vars(permissions).values() if isinstance(cls, type) for v in vars(cls).values() if isinstance(v, str)}
+def test_every_grant_is_built_from_permission_names_or_a_real_pattern() -> None:
+    names = {v for cls in vars(permissions).values() if isinstance(cls, type) for v in vars(cls).values() if isinstance(v, str) and ":" in v}
     found = all_grants()
     assert len(found) >= 30
     for where, grant in found:
         assert grant.actions and len(set(grant.actions)) == len(grant.actions), where
-        assert set(grant.actions) <= names and set(grant.key_actions) <= names, where
+        for action in (*grant.actions, *grant.key_actions):
+            if "*" in action:  # a pattern is part of the opinion, so it must match real actions
+                assert any(fnmatch.fnmatchcase(name, action) for name in names), (where, action)
+            else:
+                assert action in names, (where, action)
         assert all(a.startswith("kms:") for a in grant.key_actions), where
         assert grant.shape in ("arn", "arn_and_indexes", "arn_and_objects", "objects", "any"), where
 
@@ -101,9 +106,5 @@ def test_the_layer_says_it_is_opinion_unstable_and_credits_the_cdk() -> None:
     generated = (ROOT / "src" / "cfn_typed" / "_cdk_grants.py").read_text()
     sha = re.search(r"commit ([0-9a-f]{40})", generated)
     assert sha
-    pins = set()
-    for name in ("sync-cdk-grants.py", "sync-cdk-permissions.py"):
-        pin = re.search(r'PINNED_SHA = "([0-9a-f]{40})"', (ROOT / "scripts" / name).read_text())
-        assert pin, name
-        pins.add(pin.group(1))
-    assert pins == {sha.group(1)}  # names and grants must come from the same CDK commit
+    pin = re.search(r'PINNED_SHA = "([0-9a-f]{40})"', (ROOT / "scripts" / "sync-cdk-grants.py").read_text())
+    assert pin and pin.group(1) == sha.group(1)  # regenerate after changing the pin

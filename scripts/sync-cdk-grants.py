@@ -2,7 +2,7 @@
 """Regenerate src/cfn_typed/_cdk_grants.py: the AWS CDK's permission sets, as `cfn_typed.grants`.
 
     python scripts/sync-cdk-grants.py                 # at the pinned commit
-    python scripts/sync-cdk-grants.py --sha <commit>  # bump the pin (and the one in sync-cdk-permissions.py)
+    python scripts/sync-cdk-grants.py --sha <commit>  # bump the pin
 
 This is the opinion layer. The AWS CDK (Apache-2.0, https://github.com/aws/aws-cdk) decides which actions
 belong together for `grantRead`, `grantWrite`, `grantConsumeMessages`, ... and on which resources; this copies
@@ -11,8 +11,10 @@ those decisions for the major services, and says so. The names themselves live i
 Everything comes from CDK files fetched at the pinned commit. Sets in a grants.json are taken as they are.
 For sets that CDK composes in code, the entries below record how it combines its constants (the comments
 cite the method), constants such as `BUCKET_READ_ACTIONS` are resolved from CDK's `perms.ts`, and a literal
-must appear in the CDK file cited for it. Every action must already be a name in `cfn_typed.permissions`,
-and the generated module refers to those names, so it cannot contain an action that is not one.
+must appear in the CDK file cited for it. Every exact action must already be a name in `cfn_typed.permissions`,
+and the generated module refers to those names, so it cannot contain an action that is not one. A pattern such
+as `s3:GetObject*` is a choice about what to grant, so it is part of the opinion: it is written here, as a
+string, and is not a name.
 """
 
 import argparse
@@ -131,7 +133,7 @@ def unique(items: list[str]) -> tuple[str, ...]:
 
 
 def load_names() -> dict[str, str]:
-    """action string -> `p.Class.Attribute`, from the generated permissions module."""
+    """exact action string -> `p.Class.Attribute`, from the generated permissions module."""
     spec = importlib.util.spec_from_file_location("cfn_permissions", ROOT / "src" / "cfn_typed" / "permissions.py")
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
@@ -184,10 +186,11 @@ def composed_grants(sha: str) -> list[tuple[str, str, list[str], dict[str, Entry
 
 def render(sha: str, services: list[tuple[str, str, list[str], dict[str, Entry]]], names: dict[str, str]) -> str:
     def ref(actions: tuple[str, ...], where: str) -> str:
-        missing = [a for a in actions if a not in names]
+        missing = [a for a in actions if "*" not in a and a not in names]
         if missing:
-            sys.exit(f"{where}: not a name in cfn_typed.permissions: {missing} (extend sync-cdk-permissions.py)")
-        return "(" + ", ".join(names[a] for a in actions) + ("," if len(actions) == 1 else "") + ")"
+            sys.exit(f"{where}: not a name in cfn_typed.permissions: {missing} (is the service in sync-permissions.py?)")
+        parts = [f'"{a}"' if "*" in a else names[a] for a in actions]  # a pattern is part of the opinion: written out
+        return "(" + ", ".join(parts) + ("," if len(parts) == 1 else "") + ")"
 
     lines = [
         '"""The AWS CDK\'s permission sets, as data. Use them through `cfn_typed.grants`.',
@@ -230,7 +233,7 @@ def main() -> None:
     total = sum(len(g) for *_, g in services)
     print(f"wrote {OUT.relative_to(ROOT)}: {len(services)} resources, {total} grants, {OUT.stat().st_size} bytes (cdk {args.sha[:10]})")
     if args.sha != PINNED_SHA:
-        print(f"update PINNED_SHA here and in sync-cdk-permissions.py to {args.sha} if you keep this result")
+        print(f"update PINNED_SHA here to {args.sha} if you keep this result")
 
 
 if __name__ == "__main__":

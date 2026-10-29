@@ -22,9 +22,9 @@ class DynamoDb:
 
     class Table:
         read_data: Final = Grant(actions=(p.DynamoDb.BatchGetItem, p.DynamoDb.Query, p.DynamoDb.GetItem, p.DynamoDb.Scan, p.DynamoDb.ConditionCheckItem, p.DynamoDb.GetRecords, p.DynamoDb.GetShardIterator, p.DynamoDb.DescribeTable), key_actions=(p.Kms.Decrypt, p.Kms.DescribeKey), shape="arn_and_indexes")
-        write_data: Final = Grant(actions=(p.DynamoDb.BatchWriteItem, p.DynamoDb.PutItem, p.DynamoDb.UpdateItem, p.DynamoDb.DeleteItem, p.DynamoDb.DescribeTable), key_actions=(p.Kms.Decrypt, p.Kms.DescribeKey, p.Kms.Encrypt, p.Kms.ReEncrypt_All, p.Kms.GenerateDataKey_All), shape="arn_and_indexes")
-        read_write_data: Final = Grant(actions=(p.DynamoDb.BatchGetItem, p.DynamoDb.Query, p.DynamoDb.GetItem, p.DynamoDb.Scan, p.DynamoDb.ConditionCheckItem, p.DynamoDb.BatchWriteItem, p.DynamoDb.PutItem, p.DynamoDb.UpdateItem, p.DynamoDb.DeleteItem, p.DynamoDb.GetRecords, p.DynamoDb.GetShardIterator, p.DynamoDb.DescribeTable), key_actions=(p.Kms.Decrypt, p.Kms.DescribeKey, p.Kms.Encrypt, p.Kms.ReEncrypt_All, p.Kms.GenerateDataKey_All), shape="arn_and_indexes")
-        full_access: Final = Grant(actions=(p.DynamoDb.All,), key_actions=(p.Kms.Decrypt, p.Kms.DescribeKey, p.Kms.Encrypt, p.Kms.ReEncrypt_All, p.Kms.GenerateDataKey_All), shape="arn_and_indexes")
+        write_data: Final = Grant(actions=(p.DynamoDb.BatchWriteItem, p.DynamoDb.PutItem, p.DynamoDb.UpdateItem, p.DynamoDb.DeleteItem, p.DynamoDb.DescribeTable), key_actions=(p.Kms.Decrypt, p.Kms.DescribeKey, p.Kms.Encrypt, "kms:ReEncrypt*", "kms:GenerateDataKey*"), shape="arn_and_indexes")
+        read_write_data: Final = Grant(actions=(p.DynamoDb.BatchGetItem, p.DynamoDb.Query, p.DynamoDb.GetItem, p.DynamoDb.Scan, p.DynamoDb.ConditionCheckItem, p.DynamoDb.BatchWriteItem, p.DynamoDb.PutItem, p.DynamoDb.UpdateItem, p.DynamoDb.DeleteItem, p.DynamoDb.GetRecords, p.DynamoDb.GetShardIterator, p.DynamoDb.DescribeTable), key_actions=(p.Kms.Decrypt, p.Kms.DescribeKey, p.Kms.Encrypt, "kms:ReEncrypt*", "kms:GenerateDataKey*"), shape="arn_and_indexes")
+        full_access: Final = Grant(actions=("dynamodb:*",), key_actions=(p.Kms.Decrypt, p.Kms.DescribeKey, p.Kms.Encrypt, "kms:ReEncrypt*", "kms:GenerateDataKey*"), shape="arn_and_indexes")
         stream_read: Final = Grant(actions=(p.DynamoDb.DescribeStream, p.DynamoDb.GetRecords, p.DynamoDb.GetShardIterator), key_actions=(p.Kms.Decrypt, p.Kms.DescribeKey))
         list_streams: Final = Grant(actions=(p.DynamoDb.ListStreams,), shape="any")
 
@@ -41,18 +41,18 @@ class Kinesis:
 
     class Stream:
         read: Final = Grant(actions=(p.Kinesis.DescribeStreamSummary, p.Kinesis.GetRecords, p.Kinesis.GetShardIterator, p.Kinesis.ListShards, p.Kinesis.SubscribeToShard, p.Kinesis.DescribeStream, p.Kinesis.ListStreams, p.Kinesis.DescribeStreamConsumer), key_actions=(p.Kms.Decrypt,))
-        write: Final = Grant(actions=(p.Kinesis.ListShards, p.Kinesis.PutRecord, p.Kinesis.PutRecords), key_actions=(p.Kms.Encrypt, p.Kms.ReEncrypt_All, p.Kms.GenerateDataKey_All))
-        read_write: Final = Grant(actions=(p.Kinesis.DescribeStreamSummary, p.Kinesis.GetRecords, p.Kinesis.GetShardIterator, p.Kinesis.ListShards, p.Kinesis.SubscribeToShard, p.Kinesis.DescribeStream, p.Kinesis.ListStreams, p.Kinesis.DescribeStreamConsumer, p.Kinesis.PutRecord, p.Kinesis.PutRecords), key_actions=(p.Kms.Decrypt, p.Kms.Encrypt, p.Kms.ReEncrypt_All, p.Kms.GenerateDataKey_All))
+        write: Final = Grant(actions=(p.Kinesis.ListShards, p.Kinesis.PutRecord, p.Kinesis.PutRecords), key_actions=(p.Kms.Encrypt, "kms:ReEncrypt*", "kms:GenerateDataKey*"))
+        read_write: Final = Grant(actions=(p.Kinesis.DescribeStreamSummary, p.Kinesis.GetRecords, p.Kinesis.GetShardIterator, p.Kinesis.ListShards, p.Kinesis.SubscribeToShard, p.Kinesis.DescribeStream, p.Kinesis.ListStreams, p.Kinesis.DescribeStreamConsumer, p.Kinesis.PutRecord, p.Kinesis.PutRecords), key_actions=(p.Kms.Decrypt, p.Kms.Encrypt, "kms:ReEncrypt*", "kms:GenerateDataKey*"))
 
 
 class Kms:
     """From: aws-kms/lib/private/perms.ts, aws-kms/lib/key-grants.ts"""
 
     class Key:
-        admin: Final = Grant(actions=(p.Kms.Create_All, p.Kms.Describe_All, p.Kms.Enable_All, p.Kms.List_All, p.Kms.Put_All, p.Kms.Update_All, p.Kms.Revoke_All, p.Kms.Disable_All, p.Kms.Get_All, p.Kms.Delete_All, p.Kms.TagResource, p.Kms.UntagResource, p.Kms.ScheduleKeyDeletion, p.Kms.CancelKeyDeletion))
+        admin: Final = Grant(actions=("kms:Create*", "kms:Describe*", "kms:Enable*", "kms:List*", "kms:Put*", "kms:Update*", "kms:Revoke*", "kms:Disable*", "kms:Get*", "kms:Delete*", p.Kms.TagResource, p.Kms.UntagResource, p.Kms.ScheduleKeyDeletion, p.Kms.CancelKeyDeletion))
         decrypt: Final = Grant(actions=(p.Kms.Decrypt,))
-        encrypt: Final = Grant(actions=(p.Kms.Encrypt, p.Kms.ReEncrypt_All, p.Kms.GenerateDataKey_All))
-        encrypt_decrypt: Final = Grant(actions=(p.Kms.Decrypt, p.Kms.Encrypt, p.Kms.ReEncrypt_All, p.Kms.GenerateDataKey_All))
+        encrypt: Final = Grant(actions=(p.Kms.Encrypt, "kms:ReEncrypt*", "kms:GenerateDataKey*"))
+        encrypt_decrypt: Final = Grant(actions=(p.Kms.Decrypt, p.Kms.Encrypt, "kms:ReEncrypt*", "kms:GenerateDataKey*"))
         sign: Final = Grant(actions=(p.Kms.Sign,))
         verify: Final = Grant(actions=(p.Kms.Verify,))
         sign_verify: Final = Grant(actions=(p.Kms.Sign, p.Kms.Verify))
@@ -79,12 +79,12 @@ class S3:
     """From: aws-s3/lib/perms.ts, aws-s3/lib/bucket-grants.ts"""
 
     class Bucket:
-        read: Final = Grant(actions=(p.S3.GetObject_All, p.S3.GetBucket_All, p.S3.List_All), key_actions=(p.Kms.Decrypt, p.Kms.DescribeKey), shape="arn_and_objects")
-        put: Final = Grant(actions=(p.S3.PutObject, p.S3.PutObjectLegalHold, p.S3.PutObjectRetention, p.S3.PutObjectTagging, p.S3.PutObjectVersionTagging, p.S3.Abort_All), key_actions=(p.Kms.Encrypt, p.Kms.ReEncrypt_All, p.Kms.GenerateDataKey_All, p.Kms.Decrypt), shape="objects")
-        delete: Final = Grant(actions=(p.S3.DeleteObject_All,), shape="objects")
-        write: Final = Grant(actions=(p.S3.DeleteObject_All, p.S3.PutObject, p.S3.PutObjectLegalHold, p.S3.PutObjectRetention, p.S3.PutObjectTagging, p.S3.PutObjectVersionTagging, p.S3.Abort_All), key_actions=(p.Kms.Encrypt, p.Kms.ReEncrypt_All, p.Kms.GenerateDataKey_All, p.Kms.Decrypt), shape="arn_and_objects")
+        read: Final = Grant(actions=("s3:GetObject*", "s3:GetBucket*", "s3:List*"), key_actions=(p.Kms.Decrypt, p.Kms.DescribeKey), shape="arn_and_objects")
+        put: Final = Grant(actions=(p.S3.PutObject, p.S3.PutObjectLegalHold, p.S3.PutObjectRetention, p.S3.PutObjectTagging, p.S3.PutObjectVersionTagging, "s3:Abort*"), key_actions=(p.Kms.Encrypt, "kms:ReEncrypt*", "kms:GenerateDataKey*", p.Kms.Decrypt), shape="objects")
+        delete: Final = Grant(actions=("s3:DeleteObject*",), shape="objects")
+        write: Final = Grant(actions=("s3:DeleteObject*", p.S3.PutObject, p.S3.PutObjectLegalHold, p.S3.PutObjectRetention, p.S3.PutObjectTagging, p.S3.PutObjectVersionTagging, "s3:Abort*"), key_actions=(p.Kms.Encrypt, "kms:ReEncrypt*", "kms:GenerateDataKey*", p.Kms.Decrypt), shape="arn_and_objects")
         put_acl: Final = Grant(actions=(p.S3.PutObjectAcl, p.S3.PutObjectVersionAcl), shape="objects")
-        read_write: Final = Grant(actions=(p.S3.GetObject_All, p.S3.GetBucket_All, p.S3.List_All, p.S3.DeleteObject_All, p.S3.PutObject, p.S3.PutObjectLegalHold, p.S3.PutObjectRetention, p.S3.PutObjectTagging, p.S3.PutObjectVersionTagging, p.S3.Abort_All), key_actions=(p.Kms.Decrypt, p.Kms.DescribeKey, p.Kms.Encrypt, p.Kms.ReEncrypt_All, p.Kms.GenerateDataKey_All), shape="arn_and_objects")
+        read_write: Final = Grant(actions=("s3:GetObject*", "s3:GetBucket*", "s3:List*", "s3:DeleteObject*", p.S3.PutObject, p.S3.PutObjectLegalHold, p.S3.PutObjectRetention, p.S3.PutObjectTagging, p.S3.PutObjectVersionTagging, "s3:Abort*"), key_actions=(p.Kms.Decrypt, p.Kms.DescribeKey, p.Kms.Encrypt, "kms:ReEncrypt*", "kms:GenerateDataKey*"), shape="arn_and_objects")
 
 
 class SecretsManager:
@@ -99,7 +99,7 @@ class Sns:
     """From: aws-sns/grants.json"""
 
     class Topic:
-        publish: Final = Grant(actions=(p.Sns.Publish,), key_actions=(p.Kms.Decrypt, p.Kms.GenerateDataKey_All))
+        publish: Final = Grant(actions=(p.Sns.Publish,), key_actions=(p.Kms.Decrypt, "kms:GenerateDataKey*"))
         subscribe: Final = Grant(actions=(p.Sns.Subscribe,))
 
 
@@ -108,7 +108,7 @@ class Sqs:
 
     class Queue:
         consume_messages: Final = Grant(actions=(p.Sqs.ReceiveMessage, p.Sqs.ChangeMessageVisibility, p.Sqs.GetQueueUrl, p.Sqs.DeleteMessage, p.Sqs.GetQueueAttributes), key_actions=(p.Kms.Decrypt,))
-        send_messages: Final = Grant(actions=(p.Sqs.SendMessage, p.Sqs.GetQueueAttributes, p.Sqs.GetQueueUrl), key_actions=(p.Kms.Decrypt, p.Kms.Encrypt, p.Kms.ReEncrypt_All, p.Kms.GenerateDataKey_All))
+        send_messages: Final = Grant(actions=(p.Sqs.SendMessage, p.Sqs.GetQueueAttributes, p.Sqs.GetQueueUrl), key_actions=(p.Kms.Decrypt, p.Kms.Encrypt, "kms:ReEncrypt*", "kms:GenerateDataKey*"))
         purge: Final = Grant(actions=(p.Sqs.PurgeQueue, p.Sqs.GetQueueAttributes, p.Sqs.GetQueueUrl))
 
 

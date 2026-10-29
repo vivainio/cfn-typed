@@ -45,8 +45,8 @@ mistakes are caught**. Here are the same three mistakes on the same Lambda funct
 - **IAM.** Troposphere's sibling library [awacs](https://github.com/cloudtools/awacs) (installed with
   `troposphere[policy]`) is **broader than cfn-typed's**: it ships `py.typed`, has 469 service modules of action names,
   and builds policies and conditions, and a misspelled action is an attribute error in a type checker. cfn-typed's
-  [permission names](permissions.md) cover only the 11 services the AWS CDK uses, on purpose, and its
-  [policy helpers](policy.md) are smaller. If you need complete IAM action names today, awacs has them.
+  [permission names](permissions.md) are taken from awacs, but only for the 11 major services (868 actions), and its
+  [policy helpers](policy.md) are smaller. For any other service, awacs has the names.
 
 Choose Troposphere if you want mature, widely used, runtime-validated Python classes for CloudFormation and are happy
 with checks that happen when the code runs. Choose cfn-typed if you want mistakes in the editor, plain data, and
@@ -96,7 +96,7 @@ are committed to CloudFormation and want better types and plain-data templates o
 - It has no high-level constructs. The [patterns](patterns/index.md) are examples to copy.
 - It does not validate at runtime. Types are checked by your type checker, so `cfn-lint` still belongs in CI.
 - It is young, and Python 3.14 or later only. It has been tested with `ty`, not with other type checkers.
-- Its permission names are limited to the services the CDK uses; [awacs](#troposphere) is more complete.
+- Its permission names cover 11 major services; [awacs](#troposphere) covers 469.
 
 ## Using it with the others
 

@@ -9,6 +9,7 @@ The YAML that the examples in this book produce, next to the Python that produce
 | [SQS worker](sqs-worker.md) | a Lambda fed by a queue with a dead-letter queue, built from several patterns |
 | [Data platform (producer)](data-platform.md) | an encrypted bucket, key and tables that publish their ARNs to SSM |
 | [Data platform (consumer)](data-consumer.md) | a role that reads that storage through SSM parameters and a grant |
+| [Intrinsic functions](intrinsics.md) | every intrinsic and condition function, in one template |
 
 These are not hand-written. Each file is committed in
 [`examples/rendered/`](https://github.com/vivainio/cfn-typed/blob/main/examples/rendered), and the test suite fails if the code stops producing exactly that

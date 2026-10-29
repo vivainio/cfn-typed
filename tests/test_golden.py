@@ -14,6 +14,7 @@ sys.path.insert(0, str(EXAMPLES))
 
 import data_consumer  # noqa: E402
 import data_platform  # noqa: E402
+import intrinsics_demo  # noqa: E402
 import minimal  # noqa: E402
 import web_stack  # noqa: E402
 
@@ -40,3 +41,7 @@ def test_data_platform() -> None:
 
 def test_data_consumer() -> None:
     assert_matches_file(data_consumer.build(), RENDERED / "data-consumer.yaml")
+
+
+def test_intrinsics_demo() -> None:
+    assert_matches_file(intrinsics_demo.build(), RENDERED / "intrinsics.yaml")

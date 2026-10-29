@@ -47,7 +47,7 @@ def to_yaml(template: Mapping[str, Any]) -> str:
                 if self.analysis is None:
                     self.analysis = self.analyze_scalar(event.value)
                 a = self.analysis
-                if not (self.simple_key_context and (a.empty or a.multiline)):
+                if not a.empty and not (self.simple_key_context and a.multiline):  # an empty string stays quoted: `!GetAZs ''`
                     if (self.flow_level and a.allow_flow_plain) or (not self.flow_level and a.allow_block_plain):
                         return ""
             return super().choose_scalar_style()

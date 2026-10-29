@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from typing import Any, Literal, NotRequired, ReadOnly, TypedDict
 
-from cfn_typed.intrinsics import Expr
+from cfn_typed.intrinsics import ConditionFn, Expr
 
 type DependsOn = str | list[str]
 type DeletionPolicy = Literal["Delete", "Retain", "RetainExceptOnCreate", "Snapshot"]
@@ -53,7 +53,7 @@ class Template(TypedDict):
     Description: NotRequired[str]
     Parameters: NotRequired[dict[str, Parameter]]
     Mappings: NotRequired[dict[str, dict[str, Any]]]
-    Conditions: NotRequired[dict[str, Any]]
+    Conditions: NotRequired[dict[str, ConditionFn]]
     Resources: Resources
     Outputs: NotRequired[dict[str, Output]]
 

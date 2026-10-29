@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+  NetworkStack:
+    Type: String
+    Default: network
+    Description: The stack that exports the VPC
+  QueueAttribute:
+    Type: String
+    Default: Arn
+    AllowedValues:
+      - Arn
+      - QueueName
+Mappings:
+  Sizes:
+    dev:
+      Timeout: '30'
+    prod:
+      Timeout: '120'
+Conditions:
+  IsProd: !Equals
+    - !Ref Stage
+    - prod
+  IsNorthEurope: !Equals
+    - !Ref AWS::Region
+    - eu-north-1
+  ProdInNorthEurope: !And
+    - Condition: IsProd
+    - Condition: IsNorthEurope
+  NotProd: !Not
+    - Condition: IsProd
+Resources:
+  Queue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub
+        - ${Prefix}-${Stage}
+        - Prefix: orders
+      VisibilityTimeout: !FindInMap
+        - Sizes
+        - !Ref Stage
+        - Timeout
+      DelaySeconds: !If
+        - IsProd
+        - 5
+        - !Ref AWS::NoValue
+  QueueUrl:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Type: String
+      Name: !Join
+        - /
+        - - ''
+          - orders
+          - !Ref Stage
+          - queue-url
+      Value: !Ref Queue
+  QueueDetail:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Type: String
+      Name: /orders/detail
+      Value: !GetAtt
+        - Queue
+        - !Ref QueueAttribute
+  FirstZone:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Type: String
+      Name: /orders/first-zone
+      Value: !Select
+        - 0
+        - !GetAZs ''
+  SecondItem:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Type: String
+      Name: /orders/second
+      Value: !Select
+        - 1
+        - !Split
+          - ','
+          - a,b,c
+  Bootstrap:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Type: String
+      Name: /orders/bootstrap
+      Value:
+        Fn::Base64: !Sub echo ${Stage}
+  ProdOnly:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Type: String
+      Name: /orders/prod-only
+      Value: 'yes'
+    Condition: ProdInNorthEurope
+  Group:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: orders
+      VpcId:
+        Fn::ImportValue: !Sub ${NetworkStack}-VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Select
+            - 0
+            - !Cidr
+              - 10.0.0.0/16
+              - 4
+              - 8

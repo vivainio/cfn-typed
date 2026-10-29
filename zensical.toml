@@ -16,6 +16,7 @@ repo_name = "vivainio/cfn-typed"
 nav = [
   { "Home" = "index.md" },
   { "Getting started" = "getting-started.md" },
+  { "Intrinsic functions" = "intrinsics.md" },
   { "Comparison" = "comparison.md" },
   { "Patterns" = [
     { "Overview" = "patterns/index.md" },
@@ -40,6 +41,7 @@ nav = [
     { "SQS worker" = "rendered/sqs-worker.md" },
     { "Data platform (producer)" = "rendered/data-platform.md" },
     { "Data platform (consumer)" = "rendered/data-consumer.md" },
+    { "Intrinsic functions" = "rendered/intrinsics.md" },
   ] },
   { "Testing with golden templates" = "testing.md" },
   { "Distributing patterns" = "distributing.md" },

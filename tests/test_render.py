@@ -64,3 +64,17 @@ def test_awkward_values_round_trip() -> None:
     assert load(text) == template
     assert "Fn::Base64:" in text and "!Sub |" in text
     assert "UserData: !Base64" not in text
+
+
+def test_an_empty_string_after_a_short_form_is_written_out() -> None:
+    text = cfn.to_yaml({"Resources": {"R": {"Type": "AWS::X::Y", "Properties": {"Zones": cfn.get_azs(), "Here": cfn.get_azs(cfn.ref("AWS::Region"))}}}})
+    assert "Zones: !GetAZs ''" in text
+    assert load(text)["Resources"]["R"]["Properties"]["Zones"] == {"Fn::GetAZs": ""}  # not null
+
+
+def test_conditions_and_the_functions_round_trip() -> None:
+    sys.path.insert(0, str(EXAMPLES))
+    from intrinsics_demo import build
+
+    template = build()
+    assert load(cfn.to_yaml(template)) == json.loads(cfn.to_json(template))

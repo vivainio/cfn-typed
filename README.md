@@ -103,6 +103,12 @@ returning identity-policy statements. **This layer is opinion, not fact, and is 
 types and the permission names**: it can change or move between releases, so pin the version if you rely on it.
 Copied from the CDK (Apache-2.0, credited in `NOTICE`) by `scripts/sync-cdk-grants.py`.
 
+## Intrinsic functions
+
+`ref`, `get_att`, `sub`, `join`, `select`, `split`, `find_in_map`, `if_`, `get_azs`, `base64`, `cidr`, `import_value`, and
+the condition functions `equals`, `and_`, `or_`, `not_`, `condition_ref` build the dicts CloudFormation expects, with
+typed arguments, and `Template["Conditions"]` is typed. See the book.
+
 ## Policy statements
 
 `cfn_typed.policy` builds IAM statements with principals, conditions and the `Not` forms (`allow`, `deny`, `aws(...)`,

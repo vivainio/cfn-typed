@@ -84,6 +84,22 @@ Two rules keep resource policies honest:
 - **`condition` goes on the main statement,** and `key_condition` on the key statement of an identity grant, for
   conditions such as `kms:ViaService` that belong to the key.
 
+## ARNs
+
+`arn(service, resource)` builds the ARN of a resource in this partition, region and account, with `Fn::Sub` pseudo
+parameters, so the same code works in every partition:
+
+```python
+arn("dynamodb", "table/orders")   # arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/orders
+arn("s3", "my-bucket/*")          # arn:${AWS::Partition}:s3:::my-bucket/*
+arn("iam", "role/deployer")       # arn:${AWS::Partition}:iam::${AWS::AccountId}:role/deployer
+```
+
+Not every ARN has a region and an account. The defaults know the two common exceptions, the way
+[awacs](https://github.com/cloudtools/awacs) does: IAM ARNs have no region, and S3 bucket and object ARNs have neither
+(S3 access points, jobs and Storage Lens ARNs have both). For any other global service pass `region=False` or
+`account=False`.
+
 ## Guardrails
 
 A `deny` with a condition is a guardrail, not a grant: it takes access away wherever an allow comes from, so it works

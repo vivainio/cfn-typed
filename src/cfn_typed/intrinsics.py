@@ -44,5 +44,20 @@ def import_value(name: Any) -> ImportValue:
     return {"Fn::ImportValue": name}
 
 
-def arn(service: str, resource: str) -> Sub:
-    return sub(f"arn:${{AWS::Partition}}:{service}:${{AWS::Region}}:${{AWS::AccountId}}:{resource}")
+# S3 ARNs for buckets and objects have no region and no account (`arn:aws:s3:::bucket/key`); these resource kinds do.
+_S3_REGIONAL = ("accesspoint/", "job/", "storage-lens/")
+
+
+def arn(service: str, resource: str, *, region: bool | None = None, account: bool | None = None) -> Sub:
+    """The ARN of a resource in this partition, region and account, through `Fn::Sub` pseudo parameters.
+
+    Not every ARN has a region and an account, and the defaults know the two common exceptions, as awacs does
+    (https://github.com/cloudtools/awacs): IAM ARNs have no region, and S3 bucket and object ARNs have neither.
+    For any other global service pass `region=False` or `account=False`.
+    """
+    s3_plain = service == "s3" and not resource.startswith(_S3_REGIONAL)
+    if region is None:
+        region = not (service == "iam" or s3_plain)
+    if account is None:
+        account = not s3_plain
+    return sub(f"arn:${{AWS::Partition}}:{service}:{'${AWS::Region}' if region else ''}:{'${AWS::AccountId}' if account else ''}:{resource}")

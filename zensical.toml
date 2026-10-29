@@ -27,6 +27,7 @@ nav = [
     { "Composing fragments" = "patterns/composing.md" },
     { "A complete stack" = "patterns/complete-stack.md" },
   ] },
+  { "Testing with golden templates" = "testing.md" },
   { "Distributing patterns" = "distributing.md" },
   { "The generator" = "generator.md" },
   { "Reference" = "reference/index.md" },

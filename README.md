@@ -77,6 +77,13 @@ so a shared "defaults" package can expose a VPC id or subnet list as variables. 
 `cfn.to_json(template)` and `cfn.to_yaml(template)` (YAML needs `cfn-typed[yaml]`) render
 the same template. The YAML uses short-form intrinsics (`!Ref`, `!GetAtt A.Arn`, ...).
 
+## Testing
+
+Commit the rendered YAML and let CI check that the code still renders exactly that:
+`cfn_typed.testing.assert_matches_file(template, "rendered/stack.yaml")`. Rerun with
+`CFN_TYPED_UPDATE=1` to accept an intended change. See the book. This repo does it for its own
+examples (`examples/rendered/`).
+
 ## Patterns
 
 Helper functions that return a resource or a small fragment (a queue with its

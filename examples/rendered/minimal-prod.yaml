@@ -1,0 +1,12 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  Jobs:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 60
+      Tags:
+        - Key: Stage
+          Value: prod
+Outputs:
+  JobsUrl:
+    Value: !Ref Jobs

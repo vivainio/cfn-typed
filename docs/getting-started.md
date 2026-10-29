@@ -30,27 +30,20 @@ Each service becomes one module (`cfn_types/sqs.py`, `cfn_types/lambda_.py`, ...
 Each run writes a clean set of modules and replaces only files it generated earlier.
 Whether to commit them or generate them in CI is up to you.
 
-## Your first template
+## A minimal program
+
+The whole program is one file: build the template as data, print it as JSON.
 
 ```python
-import json
-
-import cfn_typed as cfn
-from cfn_types import sqs
-
-template: cfn.Template = {
-    "AWSTemplateFormatVersion": "2010-09-09",
-    "Resources": {
-        "Jobs": sqs.queue(VisibilityTimeout=60, Tags=cfn.tags(Service="jobs")),
-    },
-    "Outputs": {"JobsUrl": {"Value": cfn.ref("Jobs")}},
-}
-print(json.dumps(template, indent=2))
+--8<-- "examples/minimal.py:main"
 ```
 
+`build` is a pure function of its arguments, so tests can call it directly. `main`
+only reads the stage from the command line and prints. Render and deploy:
+
 ```sh
-python template.py > template.json
-aws cloudformation deploy --template-file template.json --stack-name jobs
+python minimal.py prod > template.json
+aws cloudformation deploy --template-file template.json --stack-name jobs-prod
 ```
 
 ## Let the checker help

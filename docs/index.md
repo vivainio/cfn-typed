@@ -23,6 +23,12 @@ lambda_.function(
 )
 ```
 
+## The whole thing in one file
+
+```python
+--8<-- "examples/minimal.py:main"
+```
+
 ## What is in the box
 
 <div class="grid cards" markdown>

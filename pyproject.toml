@@ -1,0 +1,27 @@
+[project]
+name = "cfn-typed"
+version = "0.1.0"
+description = "CloudFormation templates as typed Python dicts, with types generated from the registry schemas"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = ["typing-extensions>=4.13"]
+
+[project.scripts]
+cfn-typegen = "cfn_typed.typegen:main"
+
+[dependency-groups]
+dev = ["ty", "pytest"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cfn_typed"]
+
+[tool.ty.environment]
+python-version = "3.14"
+root = ["src", "examples", "."]
+
+[tool.ty.src]
+include = ["src", "examples", "tests"]

@@ -1,5 +1,10 @@
 # Patterns
 
+!!! note "Patterns are opinions"
+    Everything in this section is a judgement about what is sensible, not a fact about CloudFormation, so it is
+    kept apart from the generated types and the permission names. Treat the patterns as examples to copy and change,
+    not as an API. See [Facts first, opinions fenced](../index.md#facts-first-opinions-fenced).
+
 A **pattern** is an ordinary function that returns a resource, or a small
 *fragment* of several resources. That is the whole idea. There is no base class,
 no registry and no construct tree.

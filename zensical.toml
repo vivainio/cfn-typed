@@ -16,6 +16,7 @@ repo_name = "vivainio/cfn-typed"
 nav = [
   { "Home" = "index.md" },
   { "Getting started" = "getting-started.md" },
+  { "Comparison" = "comparison.md" },
   { "Patterns" = [
     { "Overview" = "patterns/index.md" },
     { "Lambda execution role" = "patterns/lambda-role.md" },

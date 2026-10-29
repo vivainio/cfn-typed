@@ -6,6 +6,10 @@ schemas** (1,873 resource types), so a type checker catches typos, wrong types
 and missing required properties before CloudFormation does. Checked with
 [`ty`](https://docs.astral.sh/ty/).
 
+**Facts first, opinions fenced:** the generated types and the permission names are the stable core, and anything
+that is a judgement (grants, patterns) lives in a place marked as an opinion. The book has a
+[comparison](https://vivainio.github.io/cfn-typed/comparison/) with Troposphere, the AWS CDK and Pulumi.
+
 **[Read the book](https://vivainio.github.io/cfn-typed/)** for a getting-started guide, a gallery of
 pattern helpers (a Lambda role, a queue with its dead-letter queue, ...) and a
 reference page per resource. Install from [PyPI](https://pypi.org/project/cfn-typed/):

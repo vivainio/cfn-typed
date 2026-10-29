@@ -28,6 +28,27 @@ lambda_.function(
 )
 ```
 
+## Facts first, opinions fenced
+
+cfn-typed tries to lock down **facts** and keep them primary: the shapes AWS publishes for every resource, and the
+names of IAM actions. A judgement (which actions belong together, what a sensible bucket looks like, which
+defaults to pick) is an **opinion**, and opinions live only in modules and pages that are marked as such, so you
+can drop them without touching the facts.
+
+| Layer | What it is | How far to rely on it |
+|---|---|---|
+| [Generated resource types](generator.md) | the shapes AWS publishes | the stable core |
+| [Permission names](permissions.md) | names of IAM actions, copied from the AWS CDK | facts: stable |
+| [Policy statements](policy.md) | builders for principals, conditions, allow and deny | mechanics, no opinion: stable |
+| [Grants](grants.md) | the CDK's permission sets | **opinion: unstable, marked as such** |
+| [Patterns](patterns/index.md) | a secure bucket, a load balancer, ... | **opinion: examples to copy, not an API** |
+
+This is deliberately different from systems that bundle the two. In the AWS CDK a construct such as `Bucket` carries
+defaults and permission decisions together, and what you get can depend on your CDK version and feature flags;
+Pulumi is the engine that applies your change and keeps its own state. Those are real strengths for many teams, and they
+are different trade-offs: here the generated shapes never carry a decision, and CloudFormation stays the engine. See the
+[comparison](comparison.md), including Troposphere, the closest tool.
+
 ## The whole thing in one file
 
 ```python
@@ -50,6 +71,10 @@ lambda_.function(
 - :lucide-file-text: **[Rendered examples](rendered/index.md)**
 
     The YAML each example produces, committed and checked by CI.
+
+- :lucide-scale: **[Comparison](comparison.md)**
+
+    How it differs from Troposphere, the AWS CDK and Pulumi, and what it does not do.
 
 - :lucide-cog: **[The generator](generator.md)**
 

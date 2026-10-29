@@ -5,7 +5,6 @@ from typing import Any
 
 from cfn_typed.base import Tag
 from cfn_typed.intrinsics import Expr
-from cfn_typed.policy import PolicyDocument, Statement, allow, policy_document  # noqa: F401 - kept importable from here
 
 
 def tags(**kv: str) -> list[Expr[Tag]]:

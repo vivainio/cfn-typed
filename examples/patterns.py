@@ -2,10 +2,11 @@
 
 # --8<-- [start:imports]
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 from cfn_types import iam, lambda_, sqs
 
-from cfn_typed import AnyResource, AnyStatement, Expr, Resources, Tag, allow, arn, assume_role_policy, get_att, policy_document
+from cfn_typed import AnyStatement, Expr, Resources, Tag, allow, arn, assume_role_policy, get_att, policy_document, ref
 from cfn_typed.policy import service
 
 # --8<-- [end:imports]
@@ -40,33 +41,44 @@ def sqs_event_source(function_logical: str, queue_arn: Expr[str], batch_size: in
 
 
 # --8<-- [start:queue_with_dlq]
+@dataclass(frozen=True)
+class QueueWithDlq:
+    """The handle `queue_with_dlq` returns: the logical IDs, how to refer to them, and the resources."""
+
+    queue: str
+    dlq: str
+    resources: Resources
+
+    @property
+    def queue_arn(self) -> Expr[str]:
+        return get_att(self.queue, "Arn")
+
+    @property
+    def queue_url(self) -> Expr[str]:
+        return ref(self.queue)
+
+    @property
+    def dlq_url(self) -> Expr[str]:
+        return ref(self.dlq)
+
+
 def queue_with_dlq(
     name: str,
     *,
     visibility_timeout: int = 30,
     max_receive_count: int = 3,
     tags: list[Expr[Tag]] | None = None,
-) -> Resources:
-    """A queue and its dead-letter queue: logical IDs `{name}Queue` and `{name}DLQ`."""
+) -> QueueWithDlq:
+    """A queue and its dead-letter queue, with logical IDs `{name}Queue` and `{name}DLQ`."""
+    queue_id, dlq_id = f"{name}Queue", f"{name}DLQ"
     dlq: sqs.QueueProps = {}
     main: sqs.QueueProps = {
         "VisibilityTimeout": visibility_timeout,
-        "RedrivePolicy": {"deadLetterTargetArn": get_att(f"{name}DLQ", "Arn"), "maxReceiveCount": max_receive_count},
+        "RedrivePolicy": {"deadLetterTargetArn": get_att(dlq_id, "Arn"), "maxReceiveCount": max_receive_count},
     }
     if tags:
         dlq["Tags"] = main["Tags"] = tags
-    return {f"{name}DLQ": sqs.queue(**dlq), f"{name}Queue": sqs.queue(**main)}
+    return QueueWithDlq(queue_id, dlq_id, {dlq_id: sqs.queue(**dlq), queue_id: sqs.queue(**main)})
+
+
 # --8<-- [end:queue_with_dlq]
-
-
-# --8<-- [start:combine]
-def combine(*fragments: Resources) -> Resources:
-    """Merge fragments like `|`, but refuse to silently overwrite a logical ID."""
-    out: dict[str, AnyResource] = {}
-    for fragment in fragments:
-        clash = out.keys() & fragment.keys()
-        if clash:
-            raise ValueError(f"duplicate logical IDs: {', '.join(sorted(clash))}")
-        out |= fragment
-    return out
-# --8<-- [end:combine]

@@ -49,7 +49,7 @@ The Auto Scaling group (or service) that receives the traffic names the target g
 it registers with, and lets the load balancer's group in:
 
 ```python
-resources = combine(
+resources = cfn.combine(
     web_entrypoint("Web", vpc_id=vpc_id, subnets=subnets, ports=[8080],
                    allowed_cidrs=["10.0.0.0/8"], scheme="internal"),
     {
@@ -59,5 +59,5 @@ resources = combine(
 )
 ```
 
-[`combine`](composing.md) guards against two fragments reusing a logical ID, which is
+[`cfn.combine`](composing.md) guards against two fragments reusing a logical ID, which is
 the mistake most likely once a stack is built from several of these.

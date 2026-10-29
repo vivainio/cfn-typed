@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from typing import Any
 
-from cfn_typed.base import Tag
+from cfn_typed.base import AnyResource, HasResources, Resources, Tag
 from cfn_typed.intrinsics import Expr
 
 
@@ -20,4 +20,19 @@ def merge(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[str, Any
     for key, value in override.items():
         existing = out.get(key)
         out[key] = merge(existing, value) if isinstance(existing, Mapping) and isinstance(value, Mapping) else value
+    return out
+
+
+def combine(*fragments: Resources | HasResources) -> Resources:
+    """Merge fragments like `|`, but refuse to silently overwrite a logical ID.
+
+    Each fragment is a `Resources` dict or a handle with a `resources` attribute.
+    """
+    out: dict[str, AnyResource] = {}
+    for fragment in fragments:
+        resources = fragment if isinstance(fragment, dict) else fragment.resources
+        clash = out.keys() & resources.keys()
+        if clash:
+            raise ValueError(f"duplicate logical IDs: {', '.join(sorted(clash))}")
+        out |= resources
     return out

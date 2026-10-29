@@ -29,7 +29,8 @@ aws cloudformation deploy --template-file prod.json --stack-name order-processor
 
 What it does not cover: that `"OrderQueue"` in `cfn.get_att("OrderQueue", "Arn")`
 names a resource that exists. Logical IDs are strings. Two habits make that safe in
-practice: build IDs from one `name` inside a pattern, as `queue_with_dlq` does, and
+practice: build IDs from one `name` inside a pattern and expose them on a handle, as
+`queue_with_dlq` does, and
 run `cfn-lint` in CI, which does check references.
 
 ## Testing it
@@ -38,7 +39,7 @@ The template is plain data, so a test is just a function call:
 
 ```python
 def test_dlq_is_wired() -> None:
-    resources = queue_with_dlq("Order")
+    resources = queue_with_dlq("Order").resources
     policy = resources["OrderQueue"]["Properties"]["RedrivePolicy"]
     assert policy["deadLetterTargetArn"] == get_att("OrderDLQ", "Arn")
 ```

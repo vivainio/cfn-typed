@@ -16,14 +16,19 @@ def queue_with_dlq(name: str, *, visibility_timeout: int = 30) -> Resources: ...
 A fragment is a `Resources` dict, a plain `dict[str, AnyResource]`, so you combine
 fragments with `|` and drop the result into `Template["Resources"]`.
 
+A pattern can also return a **handle**: a small dataclass with a `resources` field plus
+the logical IDs and references callers need (`orders.queue_arn`). `cfn.combine` accepts
+a dict or any handle, via the `HasResources` protocol.
+
 ## Conventions the patterns follow
 
 - **Logical IDs are derived from a `name` argument** and documented:
   `queue_with_dlq("Order")` creates `OrderQueue` and `OrderDLQ`. Callers then use
-  `ref("OrderQueue")` or `get_att("OrderQueue", "Arn")`. The names are visible in
-  the call, never generated behind your back.
+  the handle (`orders.queue_arn`) rather than retyping the IDs. The names are visible
+  in the call, never generated behind your back.
 - **A pattern that creates one resource returns that resource's type**
-  (`iam.Role`), and a pattern that creates several returns `Resources`.
+  (`iam.Role`), and a pattern that creates several returns `Resources`, or a handle with a
+  `resources` field when callers need to refer back to what it made.
 - **Inputs are typed with `Expr[T]`**, so a caller can pass a literal or a
   `Ref`/`GetAtt`.
 - **Optional pieces are only emitted when given.** No `Tags: []` noise in the output.

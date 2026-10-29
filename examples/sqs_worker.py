@@ -6,7 +6,7 @@ import sys
 import cfn_typed as cfn
 from cfn_typed import grants
 from cfn_types import lambda_
-from patterns import combine, lambda_role, queue_with_dlq, sqs_event_source
+from patterns import lambda_role, queue_with_dlq, sqs_event_source
 
 service = "order-processor"
 stage = sys.argv[1] if len(sys.argv) > 1 else "dev"
@@ -14,10 +14,12 @@ stage = sys.argv[1] if len(sys.argv) > 1 else "dev"
 t = cfn.tags(Service=service, Stage=stage)
 
 # --8<-- [start:stack]
-resources = combine(
+orders = queue_with_dlq("Order", visibility_timeout=180, tags=t)
+
+resources = cfn.combine(
     {
         "ExecutionRole": lambda_role(f"{service}-{stage}", [
-            *grants.Sqs.Queue.consume_messages.on(cfn.get_att("OrderQueue", "Arn")),
+            *grants.Sqs.Queue.consume_messages.on(orders.queue_arn),
             *grants.DynamoDb.Table.write_data.on(cfn.arn("dynamodb", f"table/orders-{stage}")),
         ]),
         "Processor": lambda_.function(
@@ -32,17 +34,17 @@ resources = combine(
             ReservedConcurrentExecutions=5,
             Tags=t,
         ),
-        "ProcessorEventSourceMapping": sqs_event_source("Processor", cfn.get_att("OrderQueue", "Arn")),
+        "ProcessorEventSourceMapping": sqs_event_source("Processor", orders.queue_arn),
     },
-    queue_with_dlq("Order", visibility_timeout=180, tags=t),
+    orders,
 )
 
 template: cfn.Template = {
     "AWSTemplateFormatVersion": "2010-09-09",
     "Resources": resources,
     "Outputs": {
-        "QueueUrl": {"Value": cfn.ref("OrderQueue")},
-        "DLQUrl": {"Value": cfn.ref("OrderDLQ")},
+        "QueueUrl": {"Value": orders.queue_url},
+        "DLQUrl": {"Value": orders.dlq_url},
     },
 }
 # --8<-- [end:stack]

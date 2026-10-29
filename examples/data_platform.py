@@ -2,7 +2,6 @@
 
 import cfn_typed as cfn
 from cfn_typed import Expr, Tag, get_att, sub
-from patterns import combine
 from storage import dynamodb_table, encryption_key, publish, secure_bucket
 
 PREFIX = "/data-platform/storage"
@@ -18,7 +17,7 @@ def build() -> cfn.Template:
     return {
         "AWSTemplateFormatVersion": "2010-09-09",
         "Parameters": params.declarations(),
-        "Resources": combine(
+        "Resources": cfn.combine(
             encryption_key("Data", alias="data-platform", tags=tags),
             secure_bucket(
                 "Data",

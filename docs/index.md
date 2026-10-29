@@ -38,6 +38,7 @@ can drop them without touching the facts.
 | Layer | What it is | How far to rely on it |
 |---|---|---|
 | [Generated resource types](generator.md) | the shapes AWS publishes | the stable core |
+| [The core](core.md) | template types, intrinsics, `combine`, `Params`, rendering | mechanics, no opinion: stable |
 | [Permission names](permissions.md) | names of IAM actions, taken from awacs | facts: stable |
 | [Policy statements](policy.md) | builders for principals, conditions, allow and deny | mechanics, no opinion: stable |
 | [Grants](grants.md) | the CDK's permission sets | **opinion: unstable, marked as such** |

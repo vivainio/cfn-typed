@@ -1,7 +1,7 @@
 """Template-level types and the runtime helper behind every generated factory."""
 
 from collections.abc import Mapping
-from typing import Any, Literal, NotRequired, ReadOnly, TypedDict
+from typing import Any, Literal, NotRequired, Protocol, ReadOnly, TypedDict
 
 from cfn_typed.intrinsics import ConditionFn, Expr
 
@@ -46,6 +46,13 @@ class Output(TypedDict):
 
 
 type Resources = dict[str, AnyResource]
+
+
+class HasResources(Protocol):
+    """A pattern handle: anything with a `resources` dict to put in a template."""
+
+    @property
+    def resources(self) -> Resources: ...
 
 
 class Template(TypedDict):

@@ -4,20 +4,18 @@ Fragments are dicts, so `|` composes them. Its one weakness is that a duplicate
 logical ID silently replaces the first resource:
 
 ```python
-queue_with_dlq("Order") | queue_with_dlq("Order")   # no error, one queue lost
+queue_with_dlq("Order").resources | queue_with_dlq("Order").resources   # no error, one queue lost
 ```
 
 ## `combine`
 
-A three-line helper in the examples makes that an error instead:
+`cfn_typed.combine` (part of [the core](../core.md)) makes that an error instead. It takes dicts and handles alike:
+anything with a `resources` attribute (the `HasResources` protocol), so a pattern's
+handle needs no import and no base class to be accepted.
 
 ```python
---8<-- "examples/patterns.py:combine"
-```
-
-```python
-combine(queue_with_dlq("Order"), queue_with_dlq("Billing"))     # fine
-combine(queue_with_dlq("Order"), queue_with_dlq("Order"))       # ValueError: duplicate logical IDs: OrderDLQ, OrderQueue
+cfn.combine(queue_with_dlq("Order"), queue_with_dlq("Billing"))     # fine
+cfn.combine(queue_with_dlq("Order"), queue_with_dlq("Order"))       # ValueError: duplicate logical IDs: OrderDLQ, OrderQueue
 ```
 
 Use `combine` whenever the fragments come from different places, which is when a

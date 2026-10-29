@@ -1,3 +1,7 @@
+from pathlib import Path
+
+import pytest
+
 import cfn_typed as cfn
 
 
@@ -29,3 +33,19 @@ def test_arn_knows_which_arns_have_no_region_or_account() -> None:
 def test_arn_can_be_told_explicitly() -> None:
     assert arn_text("route53", "hostedzone/Z", region=False) == "arn:${AWS::Partition}:route53::${AWS::AccountId}:hostedzone/Z"
     assert arn_text("sns", "t", account=False) == "arn:${AWS::Partition}:sns:${AWS::Region}::t"
+
+
+def test_combine_takes_dicts_and_handles_and_rejects_duplicates() -> None:
+    class Handle:
+        resources: cfn.Resources = {"B": {"Type": "AWS::SQS::Queue"}}
+
+    queue: cfn.Resources = {"A": {"Type": "AWS::SQS::Queue"}}
+    assert set(cfn.combine(queue, Handle())) == {"A", "B"}
+    with pytest.raises(ValueError, match="B"):
+        cfn.combine(Handle(), Handle().resources)
+
+
+def test_core_page_lists_every_export() -> None:
+    page = (Path(__file__).parent.parent / "docs" / "core.md").read_text()
+    missing = [name for name in cfn.__all__ if f"`{name}`" not in page]
+    assert not missing, f"docs/core.md does not mention: {', '.join(missing)}"

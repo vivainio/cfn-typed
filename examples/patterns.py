@@ -1,12 +1,10 @@
 """Reusable patterns built on generated factories (regenerate cfn_types with cfn-typegen)."""
 
-from typing import Any
-
 from cfn_types import iam, lambda_
-from cfn_typed import Expr, allow, arn, get_att
+from cfn_typed import Expr, Statement, allow, arn, get_att
 
 
-def lambda_role(name_prefix: str, extra: list[dict[str, Any]]) -> iam.Role:
+def lambda_role(name_prefix: str, extra: list[Statement]) -> iam.Role:
     log_arn = arn("logs", f"log-group:/aws/lambda/{name_prefix}*:*")
     return iam.role(
         AssumeRolePolicyDocument={

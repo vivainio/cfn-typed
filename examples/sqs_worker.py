@@ -6,7 +6,6 @@ import sys
 import cfn_typed as cfn
 from cfn_types import lambda_, sqs
 from patterns import lambda_role, sqs_event_source
-from cfn_typed.helpers import DDB_WRITE, SQS_CONSUME
 
 service = "order-processor"
 stage = sys.argv[1] if len(sys.argv) > 1 else "dev"
@@ -17,8 +16,8 @@ template: cfn.Template = {
     "AWSTemplateFormatVersion": "2010-09-09",
     "Resources": {
         "ExecutionRole": lambda_role(f"{service}-{stage}", [
-            cfn.allow(SQS_CONSUME, [cfn.get_att("OrderQueue", "Arn")]),
-            cfn.allow(DDB_WRITE, cfn.arn("dynamodb", f"table/orders-{stage}")),
+            cfn.allow(cfn.SQS_CONSUME, [cfn.get_att("OrderQueue", "Arn")]),
+            cfn.allow(cfn.DDB_WRITE, cfn.arn("dynamodb", f"table/orders-{stage}")),
         ]),
         "Processor": lambda_.function(
             FunctionName=f"{service}-{stage}-processor",

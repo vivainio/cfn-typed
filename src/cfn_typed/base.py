@@ -37,13 +37,16 @@ class Output(TypedDict):
     Condition: NotRequired[str]
 
 
+type Resources = dict[str, AnyResource]
+
+
 class Template(TypedDict):
     AWSTemplateFormatVersion: NotRequired[str]
     Description: NotRequired[str]
     Parameters: NotRequired[dict[str, dict[str, Any]]]
     Mappings: NotRequired[dict[str, dict[str, Any]]]
     Conditions: NotRequired[dict[str, Any]]
-    Resources: dict[str, AnyResource]
+    Resources: Resources
     Outputs: NotRequired[dict[str, Output]]
 
 

@@ -6,3 +6,4 @@ site/
 examples/cfn_types/
 docs/reference/
 uv.lock
+dist/

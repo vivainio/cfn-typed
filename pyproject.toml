@@ -1,12 +1,28 @@
 [project]
 name = "cfn-typed"
-version = "0.1.0"
+version = "0.0.0.dev0"
 description = "CloudFormation templates as typed Python dicts, with types generated from the registry schemas"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.14"
+keywords = ["cloudformation", "aws", "typeddict", "typing", "infrastructure-as-code", "codegen"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Code Generators",
+    "Typing :: Typed",
+]
 dependencies = ["typing-extensions>=4.13"]
+
+[project.urls]
+Homepage = "https://github.com/vivainio/cfn-typed"
+Documentation = "https://vivainio.github.io/cfn-typed/"
+Repository = "https://github.com/vivainio/cfn-typed"
+Issues = "https://github.com/vivainio/cfn-typed/issues"
 
 [project.scripts]
 cfn-typegen = "cfn_typed.typegen:main"

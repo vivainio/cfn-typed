@@ -93,3 +93,17 @@ uv run ty check
 uv run pytest
 scripts/build-docs.sh        # generate types and reference pages, build the book (needs zensical)
 ```
+
+## Releasing
+
+Releases are published to PyPI from GitHub with trusted publishing (no token). The
+version in `pyproject.toml` stays `0.0.0.dev0`; the workflow sets it from the tag.
+
+```sh
+gh release create v0.1.0 --generate-notes
+```
+
+That runs the tests, builds with `uv build` and publishes. One-time setup on PyPI:
+add a trusted publisher for the project `cfn-typed` (owner `vivainio`, repository
+`cfn-typed`, workflow `publish.yml`, environment `pypi`), and create the `pypi`
+environment under the repository's Settings, Environments.

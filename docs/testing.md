@@ -115,6 +115,32 @@ keeps keys in insertion order and never emits YAML anchors. What remains is up t
 These are the same rules that keep a generator easy to reason about; the golden test just
 enforces them.
 
+## Checking that references resolve
+
+A logical ID is a plain string wherever you use it, so `ref("Jbos")` renders without complaint
+and fails at deploy time. `assert_references_resolve` walks the finished template, which also
+covers fragments that were [combined](patterns/composing.md) from patterns:
+
+```python
+from cfn_typed.testing import assert_references_resolve
+
+def test_orders_references() -> None:
+    assert_references_resolve(build("prod"))
+```
+
+```text
+AssertionError: the template has unresolved references:
+  Resources.Worker.Properties.Role: Fn::GetAtt refers to 'ExecutionRol', which is not a resource (did you mean 'ExecutionRole'?)
+  Resources: circular dependency Api -> Authorizer -> Api
+```
+
+It checks `Ref`, `Fn::GetAtt`, `${Name}` in `Fn::Sub`, `DependsOn`, condition names (on a
+resource, an output, `Fn::If` and inside a condition) and `Fn::FindInMap` map names, and it
+reports dependency cycles. Pseudo parameters such as `AWS::Region` always resolve. Use
+`cfn_typed.references.find_reference_problems(template)` to get the messages as a list.
+
+It does not check that a `GetAtt` attribute exists on its resource type.
+
 ## What it does and does not check
 
 A golden file proves the code renders what you committed. It does not prove that CloudFormation

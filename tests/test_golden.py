@@ -18,30 +18,35 @@ import intrinsics_demo  # noqa: E402
 import minimal  # noqa: E402
 import web_stack  # noqa: E402
 
-from cfn_typed.testing import assert_matches_file  # noqa: E402
+from cfn_typed.testing import assert_matches_file, assert_references_resolve  # noqa: E402
+
+
+def check(template: Any, name: str) -> None:
+    assert_references_resolve(template)
+    assert_matches_file(template, RENDERED / name)
 
 
 def test_minimal_prod() -> None:
-    assert_matches_file(minimal.build("prod"), RENDERED / "minimal-prod.yaml")
+    check(minimal.build("prod"), "minimal-prod.yaml")
 
 
 def test_web_stack() -> None:
-    assert_matches_file(web_stack.build(), RENDERED / "web-stack.yaml")
+    check(web_stack.build(), "web-stack.yaml")
 
 
 def test_sqs_worker_prod() -> None:
     sys.argv = ["sqs_worker.py", "prod"]
     template: Any = runpy.run_path(str(EXAMPLES / "sqs_worker.py"))["template"]
-    assert_matches_file(template, RENDERED / "sqs-worker-prod.yaml")
+    check(template, "sqs-worker-prod.yaml")
 
 
 def test_data_platform() -> None:
-    assert_matches_file(data_platform.build(), RENDERED / "data-platform.yaml")
+    check(data_platform.build(), "data-platform.yaml")
 
 
 def test_data_consumer() -> None:
-    assert_matches_file(data_consumer.build(), RENDERED / "data-consumer.yaml")
+    check(data_consumer.build(), "data-consumer.yaml")
 
 
 def test_intrinsics_demo() -> None:
-    assert_matches_file(intrinsics_demo.build(), RENDERED / "intrinsics.yaml")
+    check(intrinsics_demo.build(), "intrinsics.yaml")

@@ -83,3 +83,12 @@ See [Parameters as variables](patterns/parameters.md).
 | `to_yaml` | the same template as readable CloudFormation YAML, with intrinsics in short form |
 
 See [Getting started](getting-started.md#json-or-yaml).
+
+## Testing
+
+In `cfn_typed.testing`, not the top level. See [Testing](testing.md).
+
+| Name | What it is |
+|---|---|
+| `assert_matches_file` | fail unless the template renders to the committed golden file |
+| `assert_references_resolve` | fail on a `Ref`, `GetAtt`, `Sub`, `DependsOn` or condition that names nothing, or on a dependency cycle |

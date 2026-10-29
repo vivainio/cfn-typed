@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from cfn_typed.references import find_reference_problems
 from cfn_typed.render import to_json, to_yaml
 
 UPDATE_ENV = "CFN_TYPED_UPDATE"
@@ -46,3 +47,13 @@ def assert_matches_file(template: Mapping[str, Any], path: str | Path, *, update
     if expected != actual:
         diff = "".join(difflib.unified_diff(expected.splitlines(True), actual.splitlines(True), str(path), "rendered", n=3))
         raise AssertionError(f"the rendered template differs from {path}:\n{diff}\n{hint}")
+
+
+def assert_references_resolve(template: Mapping[str, Any]) -> None:
+    """Fail if the template refers to a resource, parameter, condition or mapping that does not exist, or has a dependency cycle.
+
+    CloudFormation reports these only at deploy time. See `cfn_typed.references` for what is checked.
+    """
+    problems = find_reference_problems(template)
+    if problems:
+        raise AssertionError("the template has unresolved references:\n" + "\n".join(f"  {p}" for p in problems))

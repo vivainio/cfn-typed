@@ -3,6 +3,8 @@ name = "cfn-typed"
 version = "0.1.0"
 description = "CloudFormation templates as typed Python dicts, with types generated from the registry schemas"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.14"
 dependencies = ["typing-extensions>=4.13"]
 

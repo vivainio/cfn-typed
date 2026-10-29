@@ -21,16 +21,19 @@ from typing import Final
 
 
 class DynamoDb:
-    """From: aws-dynamodb/lib/perms.ts"""
+    """From: aws-dynamodb/lib/perms.ts, aws-dynamodb/lib/stream-grants.ts, aws-dynamodb/lib/table-grants.ts"""
 
+    All: Final = "dynamodb:*"
     BatchGetItem: Final = "dynamodb:BatchGetItem"
     BatchWriteItem: Final = "dynamodb:BatchWriteItem"
     ConditionCheckItem: Final = "dynamodb:ConditionCheckItem"
     DeleteItem: Final = "dynamodb:DeleteItem"
     DescribeStream: Final = "dynamodb:DescribeStream"
+    DescribeTable: Final = "dynamodb:DescribeTable"
     GetItem: Final = "dynamodb:GetItem"
     GetRecords: Final = "dynamodb:GetRecords"
     GetShardIterator: Final = "dynamodb:GetShardIterator"
+    ListStreams: Final = "dynamodb:ListStreams"
     PutItem: Final = "dynamodb:PutItem"
     Query: Final = "dynamodb:Query"
     ReadDataForReplication: Final = "dynamodb:ReadDataForReplication"

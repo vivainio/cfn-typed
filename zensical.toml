@@ -28,6 +28,7 @@ nav = [
     { "A complete stack" = "patterns/complete-stack.md" },
   ] },
   { "Permission names" = "permissions.md" },
+  { "Grants (opinion layer)" = "grants.md" },
   { "Rendered examples" = [
     { "Overview" = "rendered/index.md" },
     { "Minimal stack" = "rendered/minimal.md" },

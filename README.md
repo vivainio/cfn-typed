@@ -91,6 +91,13 @@ examples (`examples/rendered/`).
 [AWS CDK](https://github.com/aws/aws-cdk) (Apache-2.0, credited in `NOTICE`), for the major services,
 by `scripts/sync-cdk-permissions.py` at a pinned commit. See the book.
 
+## Grants (opinion layer)
+
+`cfn_typed.grants` has the AWS CDK's permission sets, such as `grants.Sqs.Queue.consume_messages.on(queue_arn)`,
+returning identity-policy statements. **This layer is opinion, not fact, and is less permanent than the generated
+types and the permission names**: it can change or move between releases, so pin the version if you rely on it.
+Copied from the CDK (Apache-2.0, credited in `NOTICE`) by `scripts/sync-cdk-grants.py`.
+
 ## Patterns
 
 Helper functions that return a resource or a small fragment (a queue with its

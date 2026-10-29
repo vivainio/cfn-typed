@@ -8,9 +8,8 @@ dead-letter queue and a concurrency cap. This is
 --8<-- "examples/sqs_worker.py:stack"
 ```
 
-`SQS_CONSUME` and `DDB_WRITE` are the sample action sets from the
-[Lambda execution role](lambda-role.md) page, and the patterns are the ones from the previous
-pages.
+The role's permissions come from the [grants](../grants.md) (the AWS CDK's permission sets), and the
+other parts are the patterns from the previous pages.
 
 [See the rendered YAML](../rendered/sqs-worker.md) for the prod stage.
 

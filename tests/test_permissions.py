@@ -38,7 +38,8 @@ def test_every_attribute_is_consistent_with_its_value() -> None:
         for attr, action in names.items():
             assert re.fullmatch(r"[a-z0-9-]+:[A-Za-z0-9*]+", action), action
             assert action.startswith(prefix + ":"), (cls, action)
-            assert attr == action.split(":", 1)[1].replace("*", "_All"), (attr, action)
+            tail = action.split(":", 1)[1]
+            assert attr == ("All" if tail == "*" else tail.replace("*", "_All")), (attr, action)
             assert action not in seen, f"duplicate {action}"
             seen.add(action)
 

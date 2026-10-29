@@ -7,19 +7,22 @@ interesting part is the extra permissions, so that is the argument.
 --8<-- "examples/patterns.py:lambda_role"
 ```
 
-Use it by passing the statements the function needs. The action sets below are samples to
-copy and adjust, kept in `examples/permissions.py`. They are built from the
-[permission names](../permissions.md), so a typo in an action is an error:
-
-```python
---8<-- "examples/permissions.py:permissions"
-```
+Use it by passing the statements the function needs. The [grants](../grants.md) give you
+statements for common cases; they are the AWS CDK's opinions, so treat them as less permanent than the
+rest of this book:
 
 ```python
 lambda_role("order-processor-prod", [
-    cfn.allow(SQS_CONSUME, [cfn.get_att("OrderQueue", "Arn")]),
-    cfn.allow(DDB_WRITE, cfn.arn("dynamodb", "table/orders-prod")),
+    *grants.Sqs.Queue.consume_messages.on(cfn.get_att("OrderQueue", "Arn")),
+    *grants.DynamoDb.Table.write_data.on(cfn.arn("dynamodb", "table/orders-prod")),
 ])
+```
+
+Or write your own with the [permission names](../permissions.md), which are plain strings, so a typo is an
+attribute error:
+
+```python
+cfn.allow([Sqs.ReceiveMessage, Sqs.DeleteMessage], [cfn.get_att("OrderQueue", "Arn")])
 ```
 
 ## Things worth noticing

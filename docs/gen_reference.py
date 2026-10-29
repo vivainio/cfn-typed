@@ -81,6 +81,29 @@ def permissions_page() -> str:
     return "\n".join(lines)
 
 
+def grants_page() -> str:
+    """Every grant, straight from the module, so the list cannot drift from the code."""
+    from cfn_typed import grants
+
+    lines = [
+        "# Grants",
+        "",
+        '!!! warning "Opinion layer, less permanent than the rest"',
+        "    These are the [AWS CDK](https://github.com/aws/aws-cdk)'s permission sets (Apache-2.0), copied at one commit.",
+        "    They are opinion, not fact, and can change or move between releases. See [Grants](../grants.md).",
+        "",
+    ]
+    for service in sorted(n for n in grants.__all__ if n not in ("Grant", "Shape")):
+        for resource, klass in sorted((n, c) for n, c in vars(getattr(grants, service)).items() if isinstance(c, type)):
+            lines += [f"## {service}.{resource}", "", "| Grant | Actions | Key actions | Applies to |", "|---|---|---|---|"]
+            for name, grant in vars(klass).items():
+                if isinstance(grant, grants.Grant):
+                    key = "<br>".join(f"`{a}`" for a in grant.key_actions) or ""
+                    lines.append(f"| `{service}.{resource}.{name}` | {'<br>'.join(f'`{a}`' for a in grant.actions)} | {key} | `{grant.shape}` |")
+            lines.append("")
+    return "\n".join(lines)
+
+
 def main() -> None:
     wanted = [t for t in (ROOT / "examples" / "types.txt").read_text().split("\n") if t and not t.startswith("#")]
     schemas = typegen.select(typegen.load_schemas(typegen.ensure_schemas(typegen.CACHE)), wanted)
@@ -91,6 +114,8 @@ def main() -> None:
         (OUT / f"{slug}.md").write_text(render(schema))
         index.append(f"- [{schema['typeName']}]({slug}.md)")
     (OUT / "permissions.md").write_text(permissions_page())
+    (OUT / "grants.md").write_text(grants_page())
+    index.append("- [Grants (opinion layer)](grants.md)")
     index.append("- [Permission names](permissions.md)")
     (OUT / "index.md").write_text("\n".join(index) + "\n")
     print(f"wrote {len(schemas)} reference pages to {OUT}")

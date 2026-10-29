@@ -41,6 +41,8 @@ CONSTANT_FILES = ["aws-s3/lib/perms.ts", "aws-dynamodb/lib/perms.ts", "aws-kms/l
 # Actions CDK writes inline in a construct: file -> the actions we take from it (each must appear there)
 LITERALS = {
     "aws-lambda/lib/function-base.ts": ["lambda:InvokeFunction"],  # grantInvoke
+    "aws-dynamodb/lib/stream-grants.ts": ["dynamodb:ListStreams"],  # StreamGrants.list
+    "aws-dynamodb/lib/table-grants.ts": ["dynamodb:*"],  # fullAccess
     "aws-secretsmanager/lib/secret.ts": [  # grantRead, grantWrite
         "secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret",
         "secretsmanager:PutSecretValue", "secretsmanager:UpdateSecret", "secretsmanager:UpdateSecretVersionStage",
@@ -56,9 +58,10 @@ def fetch(sha: str, path: str) -> str:
 
 
 def strings_in_arrays(text: str) -> list[str]:
-    """Every quoted string inside a `const X = [ ... ];` array (comments removed; spreads add nothing new)."""
+    """Every quoted string in a `const X = [ ... ];` array or an `export const X = 'a';` (comments removed)."""
     text = re.sub(r"(?m)//.*$", "", text)
-    return [s for body in re.findall(r"const\s+\w+\s*=\s*\[(.*?)\];", text, re.S) for s in re.findall(r"'([^']+)'", body)]
+    arrays = [s for body in re.findall(r"const\s+\w+\s*=\s*\[(.*?)\];", text, re.S) for s in re.findall(r"'([^']+)'", body)]
+    return arrays + re.findall(r"export\s+const\s+\w+\s*=\s*'([^']+)';", text)
 
 
 def json_actions(text: str) -> list[str]:

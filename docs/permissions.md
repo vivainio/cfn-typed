@@ -57,6 +57,6 @@ compose them. The samples used by the examples in this book are three lines each
 --8<-- "examples/permissions.py:permissions"
 ```
 
-Give the sets a name in your own package, next to the patterns that use them. Which sets belong in a
-shared library, and whether to follow the CDK's own named sets such as "consume messages", is open;
-the names are the part every approach needs.
+If you would rather start from the AWS CDK's own sets, such as "consume messages" or "read a bucket", they are in
+[grants](grants.md). That layer is opinion, not fact, and is **less permanent** than the names on this page;
+give your own sets a name in your own package, next to the patterns that use them, if you want them to stay put.

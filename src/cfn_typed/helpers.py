@@ -1,6 +1,6 @@
 """Small hand-written helpers that need no generated types."""
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any, Literal, TypedDict
 
 from cfn_typed.base import Tag
@@ -14,6 +14,16 @@ class Statement(TypedDict):
     Effect: Literal["Allow", "Deny"]
     Action: list[str]
     Resource: Expr[str] | list[Expr[str]]
+
+
+class PolicyDocument(TypedDict):
+    Version: Literal["2012-10-17"]
+    Statement: list[Statement]
+
+
+def policy_document(statements: Iterable[Statement]) -> PolicyDocument:
+    """A policy document for a role's inline policy, a managed policy, or an `AWS::IAM::Policy`."""
+    return {"Version": "2012-10-17", "Statement": list(statements)}
 
 
 def allow(actions: list[str], resource: Expr[str] | list[Expr[str]]) -> Statement:

@@ -27,9 +27,9 @@ does and render exactly as before. See the [full list](reference/permissions.md)
 ## Where the names come from
 
 **They are taken from [awacs](https://github.com/cloudtools/awacs)** (BSD-2-Clause, copyright Mark Peek), a library
-that builds its lists from AWS's Service Authorization Reference. For the major services (S3, DynamoDB, SQS, SNS,
-Lambda, KMS, Secrets Manager, SSM, CloudWatch Logs, EventBridge and Kinesis) cfn-typed takes **every** exact action, 868 in
-all, so the list is complete for those services. The credit is in the module docstring, in the `NOTICE` file, with
+that builds its lists from AWS's Service Authorization Reference. For each service that cfn-typed covers it takes
+**every** exact action, so the list is complete for those services. The [reference](reference/permissions.md) lists the
+services and every name. The credit is in the module docstring, in the `NOTICE` file, with
 awacs's licence text in the package, and here.
 
 awacs is used **only by a maintainer script**, `scripts/sync-permissions.py`, which `uv run` gives awacs for the
@@ -39,11 +39,21 @@ the AWS CDK's files; awacs is a better source for names because it is complete a
 
 ## What this is not
 
-- **Not every service.** It covers the eleven services above. For any other action, write the string.
+- **Not every service.** It covers a short list of major services (see the [reference](reference/permissions.md)). For any
+  other action, write the string, or [add the service](#adding-a-service).
 - **Not a statement about what is safe to grant.** The names say what actions exist, not which ones belong
   together or on which resources. That is still your decision.
 - **Only as good as awacs.** awacs adds actions as AWS publishes them and keeps the ones it already had, so an
   action that AWS later removes can stay in the list until it is cleaned up.
+
+## Adding a service
+
+If a service you need is missing, **open a pull request** that adds it: one line in `scripts/sync-permissions.py` and
+the regenerated module. There is deliberately no command to generate names in your own project, so the list stays one
+shared, reviewed thing. The steps are in [CONTRIBUTING.md](https://github.com/vivainio/cfn-typed/blob/main/CONTRIBUTING.md).
+
+Adding a service adds its names only. The [grants](grants.md) are copied from the AWS CDK, so a service gets grants
+only if the CDK has them.
 
 ## Building your own sets
 

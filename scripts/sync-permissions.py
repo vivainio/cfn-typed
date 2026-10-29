@@ -32,6 +32,7 @@ OUT = Path(__file__).resolve().parent.parent / "src" / "cfn_typed" / "permission
 SERVICES = {
     "s3": "S3", "dynamodb": "DynamoDb", "sqs": "Sqs", "sns": "Sns", "lambda": "Lambda", "kms": "Kms",
     "secretsmanager": "SecretsManager", "ssm": "Ssm", "logs": "Logs", "events": "Events", "kinesis": "Kinesis",
+    "ecr": "Ecr",
 }
 
 

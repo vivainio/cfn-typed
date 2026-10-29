@@ -7,7 +7,6 @@ from cfn_typed import permissions
 from cfn_typed.permissions import DynamoDb, Kms, S3, Sqs
 
 ROOT = Path(__file__).parent.parent
-PREFIX = {"DynamoDb": "dynamodb", "SecretsManager": "secretsmanager"}  # classes whose prefix is not just the lowercased name
 
 
 def services() -> dict[str, dict[str, str]]:
@@ -32,10 +31,12 @@ def test_only_exact_actions_are_names_patterns_belong_to_grants() -> None:
 
 def test_every_attribute_is_consistent_with_its_value() -> None:
     all_names = services()
-    assert len(all_names) == 11 and sum(map(len, all_names.values())) > 800
+    assert len(all_names) >= 11 and sum(map(len, all_names.values())) > 800
     seen: set[str] = set()
     for cls, names in all_names.items():
-        prefix = PREFIX.get(cls, cls.lower())
+        prefixes = {action.split(":", 1)[0] for action in names.values()}
+        assert len(prefixes) == 1, (cls, prefixes)  # one class, one IAM prefix
+        (prefix,) = prefixes
         for attr, action in names.items():
             assert re.fullmatch(r"[a-z0-9-]+:[A-Za-z][A-Za-z0-9]*", action), action
             assert action.startswith(prefix + ":"), (cls, action)

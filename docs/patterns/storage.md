@@ -51,8 +51,8 @@ on unless you turn it off. The pattern returns the table itself, so you choose i
 --8<-- "examples/storage.py:ecr_repository"
 ```
 
-Immutable tags and scan-on-push, and a pull policy only when you name principals. The ECR action names are plain
-strings: [`cfn_typed.permissions`](../permissions.md) covers a fixed set of services and ECR is not one of them.
+Immutable tags and scan-on-push, and a pull policy only when you name principals. The pull actions are written with
+the [permission names](../permissions.md) (`Ecr.BatchGetImage` and so on), so a typo in one is an error.
 
 ## Resource policies
 

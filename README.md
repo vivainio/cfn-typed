@@ -92,8 +92,9 @@ examples (`examples/rendered/`).
 
 `cfn_typed.permissions` gives IAM actions names, so `Sqs.ReceiveMessage` replaces the string
 `"sqs:ReceiveMessage"` and a typo is an attribute error. The names are taken from
-[awacs](https://github.com/cloudtools/awacs) (BSD-2-Clause, credited in `NOTICE`) for 11 major services, by
-`scripts/sync-permissions.py`; awacs is used only by that script and is not a dependency. See the book.
+[awacs](https://github.com/cloudtools/awacs) (BSD-2-Clause, credited in `NOTICE`) for a short list of major services, by
+`scripts/sync-permissions.py`; awacs is used only by that script and is not a dependency. Missing a service? Open a
+pull request (see `CONTRIBUTING.md`). See the book.
 
 ## Grants (opinion layer)
 

@@ -8,6 +8,7 @@ from typing import Literal
 from cfn_types import dynamodb, ecr, kms, s3, ssm
 
 from cfn_typed import Expr, Resources, Tag, allow, deny, get_att, join, ref, sub
+from cfn_typed.permissions import Ecr
 from cfn_typed.policy import ANY, GlobalKeys, aws, bool_, string_not_like
 
 # --8<-- [end:imports]
@@ -136,7 +137,7 @@ def ecr_repository(
             "Version": "2012-10-17",
             "Statement": [
                 # no Resource: a repository policy applies to the repository it is attached to
-                allow(["ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage", "ecr:BatchCheckLayerAvailability"],
+                allow([Ecr.GetDownloadUrlForLayer, Ecr.BatchGetImage, Ecr.BatchCheckLayerAvailability],
                       sid="AllowPull", principal=aws(*pull_principals)),
             ],
         }

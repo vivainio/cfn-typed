@@ -13,6 +13,7 @@ cfn-typegen = "cfn_typed.typegen:main"
 
 [dependency-groups]
 dev = ["ty", "pytest"]
+docs = ["zensical"]
 
 [build-system]
 requires = ["hatchling"]

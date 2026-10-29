@@ -1,5 +1,13 @@
-from cfn_typed import get_att, tags
-from cfn_typed.patterns import lambda_role, queue_with_dlq, sqs_event_source
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "examples"))
+
+from patterns import combine, lambda_role, queue_with_dlq, sqs_event_source  # noqa: E402
+
+from cfn_typed import get_att, tags  # noqa: E402
 
 
 def test_queue_with_dlq_is_a_fragment() -> None:
@@ -13,5 +21,10 @@ def test_queue_with_dlq_is_a_fragment() -> None:
 
 def test_single_resource_helpers() -> None:
     assert lambda_role("svc", [])["Type"] == "AWS::IAM::Role"
-    mapping = sqs_event_source("Fn", get_att("Q", "Arn"))
-    assert mapping["Properties"]["BatchSize"] == 10
+    assert sqs_event_source("Fn", get_att("Q", "Arn"))["Properties"]["BatchSize"] == 10
+
+
+def test_combine_rejects_duplicates() -> None:
+    assert set(combine(queue_with_dlq("A"), queue_with_dlq("B"))) == {"AQueue", "ADLQ", "BQueue", "BDLQ"}
+    with pytest.raises(ValueError, match="AQueue"):
+        combine(queue_with_dlq("A"), queue_with_dlq("A"))

@@ -59,13 +59,11 @@ generated property uses), `base` (`Template`, `Tag`, `build`) and a few helpers.
 `examples/` has a worked SQS + Lambda stack and `examples/cfn_types/` is its
 generated output.
 
-## Pattern helpers
+## Patterns
 
-`cfn_typed.patterns` has plain functions that return a resource or a small
-fragment of several, to combine with `|`: `lambda_role`, `sqs_event_source` and
-`queue_with_dlq("Order")` (logical IDs `OrderQueue` and `OrderDLQ`). They are
-built with a small private generated subset (`cfn_typed/_gen`) and return
-`AnyResource` / `Resources`, so they mix with the types you generate yourself.
+Helper functions that return a resource or a small fragment (a queue with its
+dead-letter queue, a Lambda role, ...) are documented in the book, with working
+code in `examples/patterns.py`. Build it locally with `uv run zensical serve`.
 
 ## Type checking notes
 
@@ -80,7 +78,13 @@ break you); `oneOf` constraints between properties are not modelled; arrays are
 
 ## Development
 
+The repo contains no generated types. The examples and tests need a few, which are
+generated into `examples/cfn_types/` (gitignored) the first time pytest runs, or by hand:
+
 ```sh
+cfn-typegen --out examples/cfn_types AWS::SQS::Queue AWS::Lambda::Function \
+    AWS::Lambda::EventSourceMapping AWS::IAM::Role
 uv run ty check
 uv run pytest
+uv run zensical serve        # the book
 ```

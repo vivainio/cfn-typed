@@ -1,20 +1,15 @@
-"""Helper functions that create common resources, or small fragments of several.
+"""Pattern helpers shown in the book (docs/). Sections feed the pages via pymdownx.snippets."""
 
-Fragments are plain `Resources` dicts; combine them with `|`. Logical IDs follow a
-documented convention (`queue_with_dlq("Order")` -> `OrderQueue`, `OrderDLQ`), so
-callers can refer to them with `ref` / `get_att`.
+# --8<-- [start:imports]
+from cfn_types import iam, lambda_, sqs
 
-The resources are built with a small private set of generated types (`_gen`) and
-returned as `AnyResource`, so they mix freely with types you generate yourself.
-"""
+from cfn_typed import AnyResource, Expr, Resources, Statement, Tag, allow, arn, get_att
 
-from cfn_typed._gen import iam, lambda_, sqs
-from cfn_typed.base import AnyResource, Resources, Tag
-from cfn_typed.helpers import Statement, allow
-from cfn_typed.intrinsics import Expr, arn, get_att
+# --8<-- [end:imports]
 
 
-def lambda_role(name_prefix: str, extra: list[Statement]) -> AnyResource:
+# --8<-- [start:lambda_role]
+def lambda_role(name_prefix: str, extra: list[Statement]) -> iam.Role:
     """Execution role for a Lambda: log permissions plus the `extra` statements."""
     log_arn = arn("logs", f"log-group:/aws/lambda/{name_prefix}*:*")
     return iam.role(
@@ -37,17 +32,21 @@ def lambda_role(name_prefix: str, extra: list[Statement]) -> AnyResource:
             },
         )],
     )
+# --8<-- [end:lambda_role]
 
 
-def sqs_event_source(function_logical: str, queue_arn: Expr[str], batch_size: int = 10) -> AnyResource:
+# --8<-- [start:sqs_event_source]
+def sqs_event_source(function_logical: str, queue_arn: Expr[str], batch_size: int = 10) -> lambda_.EventSourceMapping:
     """Trigger the Lambda `function_logical` from an SQS queue."""
     return lambda_.event_source_mapping(
         BatchSize=batch_size,
         EventSourceArn=queue_arn,
         FunctionName=get_att(function_logical, "Arn"),
     )
+# --8<-- [end:sqs_event_source]
 
 
+# --8<-- [start:queue_with_dlq]
 def queue_with_dlq(
     name: str,
     *,
@@ -64,3 +63,17 @@ def queue_with_dlq(
     if tags:
         dlq["Tags"] = main["Tags"] = tags
     return {f"{name}DLQ": sqs.queue(**dlq), f"{name}Queue": sqs.queue(**main)}
+# --8<-- [end:queue_with_dlq]
+
+
+# --8<-- [start:combine]
+def combine(*fragments: Resources) -> Resources:
+    """Merge fragments like `|`, but refuse to silently overwrite a logical ID."""
+    out: dict[str, AnyResource] = {}
+    for fragment in fragments:
+        clash = out.keys() & fragment.keys()
+        if clash:
+            raise ValueError(f"duplicate logical IDs: {', '.join(sorted(clash))}")
+        out |= fragment
+    return out
+# --8<-- [end:combine]

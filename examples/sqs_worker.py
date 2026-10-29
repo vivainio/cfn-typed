@@ -5,16 +5,16 @@ import sys
 
 import cfn_typed as cfn
 from cfn_types import lambda_
-from cfn_typed.patterns import lambda_role, queue_with_dlq, sqs_event_source
+from patterns import combine, lambda_role, queue_with_dlq, sqs_event_source
 
 service = "order-processor"
 stage = sys.argv[1] if len(sys.argv) > 1 else "dev"
 
 t = cfn.tags(Service=service, Stage=stage)
 
-template: cfn.Template = {
-    "AWSTemplateFormatVersion": "2010-09-09",
-    "Resources": {
+# --8<-- [start:stack]
+resources = combine(
+    {
         "ExecutionRole": lambda_role(f"{service}-{stage}", [
             cfn.allow(cfn.SQS_CONSUME, [cfn.get_att("OrderQueue", "Arn")]),
             cfn.allow(cfn.DDB_WRITE, cfn.arn("dynamodb", f"table/orders-{stage}")),
@@ -32,12 +32,18 @@ template: cfn.Template = {
             Tags=t,
         ),
         "ProcessorEventSourceMapping": sqs_event_source("Processor", cfn.get_att("OrderQueue", "Arn")),
-        **queue_with_dlq("Order", visibility_timeout=180, tags=t),
     },
+    queue_with_dlq("Order", visibility_timeout=180, tags=t),
+)
+
+template: cfn.Template = {
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Resources": resources,
     "Outputs": {
         "QueueUrl": {"Value": cfn.ref("OrderQueue")},
         "DLQUrl": {"Value": cfn.ref("OrderDLQ")},
     },
 }
+# --8<-- [end:stack]
 
 print(json.dumps(template, indent=2))

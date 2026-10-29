@@ -3,7 +3,8 @@
 
     cfn-typegen --out cfn_types AWS::SQS::Queue 'AWS::Lambda::*'
     cfn-typegen --out cfn_types --template template.json   # only the types a template uses
-    cfn-typegen --out cfn_types --all                      # everything (~19 MB)
+    cfn-typegen --out cfn_types --all                      # everything
+    cfn-typegen --out cfn_types --no-docs AWS::SQS::Queue          # without description docstrings
 
 Type names are case-insensitive globs. The schema zip is downloaded once into
 ~/.cache/cfn-typegen/, or pass --schemas to use a local CloudformationSchema.zip.
@@ -63,14 +64,14 @@ def short(desc: str | None) -> str | None:
 
 def union(types: list[str]) -> str:
     uniq = list(dict.fromkeys(types))
-    return "_t.Any" if "_t.Any" in uniq else " | ".join(uniq)
+    return "Any" if "Any" in uniq else " | ".join(uniq)
 
 
 class Module:
     """Names and class blocks for one service module."""
 
     def __init__(self) -> None:
-        self.names: set[str] = set()
+        self.names: set[str] = {n for names in IMPORTS.values() for n in names}
         self.blocks: list[str] = []
 
     def claim(self, base: str) -> str:
@@ -85,12 +86,12 @@ class Module:
 class ResourceGen:
     """Turns one resource schema into TypedDicts inside a Module."""
 
-    def __init__(self, mod: Module, schema: Schema, prefix: str) -> None:
-        self.mod, self.schema, self.prefix = mod, schema, prefix
+    def __init__(self, mod: Module, schema: Schema, prefix: str, docs: bool = True) -> None:
+        self.mod, self.schema, self.prefix, self.docs = mod, schema, prefix, docs
         self.cache: dict[str, str] = {}
         self.busy: set[str] = set()
 
-    # -- type expressions: always fully wrapped, e.g. `_Expr[list[_Expr[str]]]` --
+    # -- type expressions: always fully wrapped, e.g. `Expr[list[Expr[str]]]` --
 
     def ty(self, node: Schema, hint: str) -> str:
         if "$ref" in node:
@@ -108,43 +109,43 @@ class ResourceGen:
             else:
                 alts = [a for a in node.get("oneOf") or node.get("anyOf") or []
                         if {"type", "$ref", "properties", "items", "enum"} & a.keys()]
-                return union([self.ty(a, hint) for a in alts]) if alts else "_t.Any"
+                return union([self.ty(a, hint) for a in alts]) if alts else "Any"
         match t:
             case "string":
-                return "_Expr[str]"
+                return "Expr[str]"
             case "integer":
-                return "_Expr[int]"
+                return "Expr[int]"
             case "number":
-                return "_Expr[float]"
+                return "Expr[float]"
             case "boolean":
-                return "_Expr[bool]"
+                return "Expr[bool]"
             case "null":
                 return "None"
             case "array":
                 items = node.get("items")
-                return f"_Expr[list[{self.ty(items, hint) if isinstance(items, dict) else '_t.Any'}]]"
+                return f"Expr[list[{self.ty(items, hint) if isinstance(items, dict) else 'Any'}]]"
             case "object":
                 return self.obj(node, hint)
-        return "_t.Any"
+        return "Any"
 
     def obj(self, node: Schema, hint: str) -> str:
         if node.get("properties"):
             name = self.mod.claim(hint)
             self.build_class(name, node)
-            return f"_Expr[{name}]"
+            return f"Expr[{name}]"
         if node.get("patternProperties"):
             val = union([self.ty(v, hint) for v in node["patternProperties"].values()])
         elif isinstance(node.get("additionalProperties"), dict):
             val = self.ty(node["additionalProperties"], hint)
         else:
-            val = "_t.Any"
-        return f"_Expr[_abc.Mapping[str, {val}]]"
+            val = "Any"
+        return f"Expr[Mapping[str, {val}]]"
 
     def ref(self, ref: str) -> str:
         if ref in self.cache:
             return self.cache[ref]
         if ref in self.busy:  # a cycle through non-object types
-            return "_t.Any"
+            return "Any"
         node: Any = self.schema
         for part in ref.removeprefix("#/").split("/"):
             node = node[part]
@@ -152,10 +153,10 @@ class ResourceGen:
         hint = self.prefix + pascal(last)
         props = node.get("properties") or {}
         if last == "Tag" and set(props) == {"Key", "Value"}:
-            out = "_Expr[_Tag]"
+            out = "Expr[Tag]"
         elif props:
             name = self.mod.claim(hint)
-            out = self.cache[ref] = f"_Expr[{name}]"  # registered first: definitions may be recursive
+            out = self.cache[ref] = f"Expr[{name}]"  # registered first: definitions may be recursive
             self.build_class(name, node)
         else:
             self.busy.add(ref)
@@ -170,27 +171,27 @@ class ResourceGen:
         """Emit a TypedDict block; returns whether any field is required."""
         required = set(node.get("required", ())) - skip
         fields = [
-            (k, self.ty(v, name + pascal(k)), k in required, short(v.get("description")))
+            (k, self.ty(v, name + pascal(k)), k in required, short(v.get("description")) if self.docs else None)
             for k, v in node.get("properties", {}).items()
             if k not in skip
         ]
-        doc = short(node.get("description"))
+        doc = short(node.get("description")) if self.docs else None
         closed = node.get("additionalProperties") is False  # PEP 728: unknown keys become type errors
         if all(k.isidentifier() and not keyword.iskeyword(k) for k, *_ in fields):
-            lines = [f"class {name}(_te.TypedDict{', closed=True' if closed else ''}):"]
+            lines = [f"class {name}(TypedDict{', closed=True' if closed else ''}):"]
             if doc:
                 lines.append(f"    {doc!r}")
             for k, t, req, fdoc in fields:
-                lines.append(f"    {k}: {t if req else f'_t.NotRequired[{t}]'}")
+                lines.append(f"    {k}: {t if req else f'NotRequired[{t}]'}")
                 if fdoc:
                     lines.append(f"    {fdoc!r}")
             if not doc and not fields:
                 lines.append("    pass")
         else:  # keys that are not identifiers need the functional syntax
             body = ", ".join(
-                f"{k!r}: {t!r}" if req else f"{k!r}: _t.NotRequired[{t!r}]" for k, t, req, _ in fields
+                f"{k!r}: {t!r}" if req else f"{k!r}: NotRequired[{t!r}]" for k, t, req, _ in fields
             )
-            lines = [f"{name} = _te.TypedDict({name!r}, {{{body}}}{', closed=True' if closed else ''})"]
+            lines = [f"{name} = TypedDict({name!r}, {{{body}}}{', closed=True' if closed else ''})"]
         self.mod.blocks.append("\n".join(lines))
         return any(req for _, _, req, _ in fields)
 
@@ -199,7 +200,27 @@ def readonly_props(schema: Schema) -> frozenset[str]:
     return frozenset(p.split("/")[2] for p in schema.get("readOnlyProperties", []) if p.count("/") == 2)
 
 
-def render_module(title: str, schemas: list[Schema]) -> str:
+# Names the generated modules import. Reserved so a schema definition can't shadow them.
+IMPORTS = {
+    "collections.abc": ["Mapping"],
+    "typing": ["Any", "Literal", "NotRequired", "Unpack"],
+    "typing_extensions": ["TypedDict"],
+    "cfn_typed.base": ["DeletionPolicy", "DependsOn", "ResourceAttrs", "Tag", "UpdateReplacePolicy", "build"],
+    "cfn_typed.intrinsics": ["Expr"],
+}
+
+
+def imports(body: str) -> str:
+    """One `from x import ...` line per source, listing only the names `body` uses."""
+    lines = []
+    for source, names in IMPORTS.items():
+        used = [n for n in names if re.search(rf"\b{n}\b", body)]
+        if used:
+            lines.append(f"from {source} import {', '.join(used)}")
+    return "\n".join(lines) + "\n"
+
+
+def render_module(title: str, schemas: list[Schema], docs: bool = True) -> str:
     mod = Module()
     plans = []
     for s in sorted(schemas, key=lambda s: s["typeName"]):
@@ -207,44 +228,30 @@ def render_module(title: str, schemas: list[Schema]) -> str:
         plans.append((s, mod.claim(res), mod.claim(res + "Props"), mod.claim(snake(res))))
     for schema, res, props_cls, factory in plans:
         type_name = schema["typeName"]
-        gen = ResourceGen(mod, schema, res)
+        gen = ResourceGen(mod, schema, res, docs)
         has_required = gen.build_class(props_cls, schema, readonly_props(schema))
-        doc = short(schema.get("description"))
+        doc = short(schema.get("description")) if docs else None
         mod.blocks.append("\n".join([
-            f"class {res}(_ResourceAttrs):",
+            f"class {res}(ResourceAttrs):",
             *([f"    {doc!r}"] if doc else []),
-            f"    Type: _t.Literal[{type_name!r}]",
-            f"    Properties: {props_cls}" if has_required else f"    Properties: _t.NotRequired[{props_cls}]",
+            f"    Type: Literal[{type_name!r}]",
+            f"    Properties: {props_cls}" if has_required else f"    Properties: NotRequired[{props_cls}]",
         ]))
         mod.blocks.append("\n".join([
             f"def {factory}(",
             "    *,",
-            "    depends_on: _DependsOn | None = None,",
-            "    deletion_policy: _DeletionPolicy | None = None,",
-            "    update_replace_policy: _UpdateReplacePolicy | None = None,",
+            "    depends_on: DependsOn | None = None,",
+            "    deletion_policy: DeletionPolicy | None = None,",
+            "    update_replace_policy: UpdateReplacePolicy | None = None,",
             "    condition: str | None = None,",
-            "    metadata: dict[str, _t.Any] | None = None,",
-            f"    **props: _t.Unpack[{props_cls}],",
+            "    metadata: dict[str, Any] | None = None,",
+            f"    **props: Unpack[{props_cls}],",
             f") -> {res}:",
-            f"    return _build({type_name!r}, props, depends_on, deletion_policy, update_replace_policy, condition, metadata)",
+            f"    return build({type_name!r}, props, depends_on, deletion_policy, update_replace_policy, condition, metadata)",
         ]))
-    head = f'''{MARKER} from the CloudFormation registry schemas. Do not edit.
-"""{title} resources."""
-
-import collections.abc as _abc
-import typing as _t
-
-import typing_extensions as _te
-
-from cfn_typed.base import DeletionPolicy as _DeletionPolicy
-from cfn_typed.base import DependsOn as _DependsOn
-from cfn_typed.base import ResourceAttrs as _ResourceAttrs
-from cfn_typed.base import Tag as _Tag
-from cfn_typed.base import UpdateReplacePolicy as _UpdateReplacePolicy
-from cfn_typed.base import build as _build
-from cfn_typed.intrinsics import Expr as _Expr
-'''
-    return head + "\n\n" + "\n\n\n".join(mod.blocks) + "\n"
+    body = "\n\n\n".join(mod.blocks)
+    head = f"{MARKER} from the CloudFormation registry schemas. Do not edit.\n" f'"""{title} resources."""\n\n' + imports(body)
+    return head + "\n\n" + body + "\n"
 
 
 def ensure_schemas(path: Path) -> Path:
@@ -274,7 +281,7 @@ def select(schemas: list[Schema], patterns: list[str]) -> list[Schema]:
     return [s for s in schemas if any(fnmatch.fnmatchcase(s["typeName"].lower(), p) for p in wanted)]
 
 
-def write(out: Path, schemas: list[Schema]) -> None:
+def write(out: Path, schemas: list[Schema], docs: bool = True) -> None:
     groups: dict[str, list[Schema]] = defaultdict(list)
     for schema in schemas:
         parts = schema["typeName"].split("::")
@@ -290,7 +297,7 @@ def write(out: Path, schemas: list[Schema]) -> None:
     (out / "__init__.py").write_text(f"{MARKER}.\n")
     for svc, items in sorted(groups.items()):
         title = "::".join(items[0]["typeName"].split("::")[:2])
-        (out / f"{svc}.py").write_text(render_module(title, items))
+        (out / f"{svc}.py").write_text(render_module(title, items, docs))
     print(f"wrote {sum(map(len, groups.values()))} resources in {len(groups)} modules to {out}")
 
 
@@ -300,6 +307,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--out", type=Path, required=True, help="directory to write the modules into")
     ap.add_argument("--template", type=Path, action="append", default=[], help="JSON template; emit the types it uses")
     ap.add_argument("--all", action="store_true", help="emit every resource type")
+    ap.add_argument("--no-docs", action="store_true", help="leave the description docstrings out (much smaller output)")
     ap.add_argument("--schemas", type=Path, default=CACHE, help="CloudformationSchema.zip (downloaded if missing)")
     args = ap.parse_args(argv)
 
@@ -307,7 +315,7 @@ def main(argv: list[str] | None = None) -> None:
     if not patterns and not args.all:
         ap.error("name resource types, pass --template, or use --all")
     schemas = load_schemas(ensure_schemas(args.schemas))
-    write(args.out, schemas if args.all else select(schemas, patterns))
+    write(args.out, schemas if args.all else select(schemas, patterns), docs=not args.no_docs)
 
 
 if __name__ == "__main__":

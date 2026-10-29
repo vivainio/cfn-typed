@@ -6,12 +6,16 @@ types) into Python modules, for **only the types you select**.
 ```sh
 cfn-typegen --out cfn_types AWS::SQS::Queue 'AWS::Lambda::*'
 cfn-typegen --out cfn_types --template template.json
-cfn-typegen --out cfn_types --all                         # everything, ~19 MB
+cfn-typegen --out cfn_types --all                         # everything, ~5.8 MB, ~4 MB with --no-docs
+cfn-typegen --out cfn_types --no-docs AWS::SQS::Queue     # without description docstrings
 ```
 
 Type names are case-insensitive globs and an unmatched name is an error. The
 schema zip is downloaded once into `~/.cache/cfn-typegen/`; `--schemas` points at
 a local copy. A rerun replaces only files it generated earlier.
+
+`--no-docs` leaves out the description docstrings (the first sentence of each property's
+AWS documentation). The types are identical; the output is about 30% smaller.
 
 ## What one resource looks like
 

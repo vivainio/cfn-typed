@@ -42,7 +42,8 @@ own project, so the output stays small (four resources is about 44 KB):
 ```sh
 cfn-typegen --out cfn_types AWS::SQS::Queue 'AWS::Lambda::*'
 cfn-typegen --out cfn_types --template template.json   # types a JSON template uses
-cfn-typegen --out cfn_types --all                      # everything, ~19 MB
+cfn-typegen --out cfn_types --all                      # everything, ~5.8 MB, ~4 MB with --no-docs
+cfn-typegen --out cfn_types --no-docs AWS::SQS::Queue  # leave out the description docstrings
 ```
 
 Type names are case-insensitive globs and an unmatched name is an error. The

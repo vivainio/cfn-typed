@@ -10,4 +10,4 @@ def test_merge_is_deep() -> None:
 
 
 def test_allow_builds_a_statement() -> None:
-    assert cfn.allow(cfn.SQS_CONSUME, [cfn.get_att("Q", "Arn")])["Effect"] == "Allow"
+    assert cfn.allow(["sqs:ReceiveMessage"], [cfn.get_att("Q", "Arn")])["Effect"] == "Allow"

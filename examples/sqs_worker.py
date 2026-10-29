@@ -5,6 +5,7 @@ import sys
 
 import cfn_typed as cfn
 from cfn_types import lambda_
+from permissions import DDB_WRITE, SQS_CONSUME
 from patterns import combine, lambda_role, queue_with_dlq, sqs_event_source
 
 service = "order-processor"
@@ -16,8 +17,8 @@ t = cfn.tags(Service=service, Stage=stage)
 resources = combine(
     {
         "ExecutionRole": lambda_role(f"{service}-{stage}", [
-            cfn.allow(cfn.SQS_CONSUME, [cfn.get_att("OrderQueue", "Arn")]),
-            cfn.allow(cfn.DDB_WRITE, cfn.arn("dynamodb", f"table/orders-{stage}")),
+            cfn.allow(SQS_CONSUME, [cfn.get_att("OrderQueue", "Arn")]),
+            cfn.allow(DDB_WRITE, cfn.arn("dynamodb", f"table/orders-{stage}")),
         ]),
         "Processor": lambda_.function(
             FunctionName=f"{service}-{stage}-processor",

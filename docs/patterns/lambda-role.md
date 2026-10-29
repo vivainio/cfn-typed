@@ -7,12 +7,17 @@ interesting part is the extra permissions, so that is the argument.
 --8<-- "examples/patterns.py:lambda_role"
 ```
 
-Use it by passing the statements the function needs:
+Use it by passing the statements the function needs. The action sets below are samples to
+copy and adjust, kept in `examples/permissions.py`; they are not part of the library:
+
+```python
+--8<-- "examples/permissions.py:permissions"
+```
 
 ```python
 lambda_role("order-processor-prod", [
-    cfn.allow(cfn.SQS_CONSUME, [cfn.get_att("OrderQueue", "Arn")]),
-    cfn.allow(cfn.DDB_WRITE, cfn.arn("dynamodb", "table/orders-prod")),
+    cfn.allow(SQS_CONSUME, [cfn.get_att("OrderQueue", "Arn")]),
+    cfn.allow(DDB_WRITE, cfn.arn("dynamodb", "table/orders-prod")),
 ])
 ```
 

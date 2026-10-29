@@ -6,10 +6,6 @@ from typing import Any, Literal, TypedDict
 from cfn_typed.base import Tag
 from cfn_typed.intrinsics import Expr
 
-SQS_CONSUME = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
-DDB_WRITE = ["dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem"]
-
-
 def tags(**kv: str) -> list[Expr[Tag]]:
     return [{"Key": k, "Value": v} for k, v in kv.items()]
 

@@ -59,6 +59,11 @@ generated property uses), `base` (`Template`, `Tag`, `build`) and a few helpers.
 `examples/` has a worked SQS + Lambda stack and `examples/cfn_types/` is its
 generated output.
 
+## JSON or YAML
+
+`cfn.to_json(template)` and `cfn.to_yaml(template)` (YAML needs `cfn-typed[yaml]`) render
+the same template. The YAML uses short-form intrinsics (`!Ref`, `!GetAtt A.Arn`, ...).
+
 ## Patterns
 
 Helper functions that return a resource or a small fragment (a queue with its

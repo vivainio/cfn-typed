@@ -46,6 +46,45 @@ python minimal.py prod > template.json
 aws cloudformation deploy --template-file template.json --stack-name jobs-prod
 ```
 
+## JSON or YAML
+
+`cfn.to_json(template)` is `json.dumps` with a default indent. `cfn.to_yaml(template)`
+writes the same template as readable CloudFormation YAML:
+
+```python
+print(cfn.to_yaml(build("prod")))
+```
+
+```yaml
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  Jobs:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 60
+      Tags:
+        - Key: Stage
+          Value: prod
+Outputs:
+  JobsUrl:
+    Value: !Ref Jobs
+```
+
+Intrinsics use CloudFormation's short forms (`!Ref`, `!GetAtt Jobs.Arn`, `!Sub`, `!Join`,
+...), keys keep the order you wrote them, lists are indented under their key, and
+multi-line strings such as `UserData` become `|` blocks. A list that is shared between
+resources (the tags in the examples) is repeated, never turned into a YAML anchor.
+
+!!! note "YAML needs PyYAML"
+    JSON has no dependencies. For YAML install the extra: `uv add 'cfn-typed[yaml]'`.
+
+!!! note "Nested short forms"
+    CloudFormation does not allow a short form directly inside another one
+    (`!Base64 !Sub ...`). When that happens `to_yaml` keeps the outer function in long
+    form (`Fn::Base64: !Sub ...`). Functions with no short form, such as `Fn::Length`,
+    also stay long. Parsing the YAML back gives exactly the template you started with;
+    the test suite checks that round trip.
+
 ## Let the checker help
 
 ```sh

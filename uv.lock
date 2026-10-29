@@ -10,22 +10,35 @@ dependencies = [
     { name = "typing-extensions" },
 ]
 
+[package.optional-dependencies]
+yaml = [
+    { name = "pyyaml" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "pyyaml" },
     { name = "ty" },
+    { name = "types-pyyaml" },
 ]
 docs = [
     { name = "zensical" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "typing-extensions", specifier = ">=4.13" }]
+requires-dist = [
+    { name = "pyyaml", marker = "extra == 'yaml'", specifier = ">=6" },
+    { name = "typing-extensions", specifier = ">=4.13" },
+]
+provides-extras = ["yaml"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "pytest" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ty" },
+    { name = "types-pyyaml", specifier = ">=6.0.12.20260906" },
 ]
 docs = [{ name = "zensical" }]
 
@@ -323,6 +336,15 @@ wheels = [
     { url = "https://pypi-mirror.services.basware.com/packages/51/13/804b1f993bf84a819385f8b440fbc4b894499e2c20d865cd74d69327e7b8/ty-0.0.94-py3-none-win32.whl", hash = "sha256:3212dcf30b7567f2bb65a83cdfc4818a5385f82e7afddd83548b0d84e759057e" },
     { url = "https://pypi-mirror.services.basware.com/packages/a1/23/81850750cda0ea781ba9d6e08cea1a1039361cb3474c7dd03765bbc4b51f/ty-0.0.94-py3-none-win_amd64.whl", hash = "sha256:daf5bafe8e7d21b8a99a56fc8518f2342a2dbcaa370a5c25cfaedc684088d158" },
     { url = "https://pypi-mirror.services.basware.com/packages/d7/d4/ac3a759556493230823abd31e149c95401f96b9cac36567bd403a8454ea3/ty-0.0.94-py3-none-win_arm64.whl", hash = "sha256:ce344353ccdc542cfcfd6abe1481cf23c005f483411ea79652b78ce0beae36f2" },
+]
+
+[[package]]
+name = "types-pyyaml"
+version = "6.0.12.20260906"
+source = { registry = "https://pypi-mirror.services.basware.com/simple" }
+sdist = { url = "https://pypi-mirror.services.basware.com/packages/90/6e/abec85b9013db5b934b0280a6dd104904d84f7bcbaab2e2f3def87ac7463/types_pyyaml-6.0.12.20260906.tar.gz", hash = "sha256:f59c1cc05010b833d2d72287bbaa72610106b28d42d89a907313117faba85212" }
+wheels = [
+    { url = "https://pypi-mirror.services.basware.com/packages/15/c0/fc0644b7ddcfb969e95845837143cb5173ddd6e06ee4ba5fc493cd9329b7/types_pyyaml-6.0.12.20260906-py3-none-any.whl", hash = "sha256:bca893ff0d51df5c9053137d5d0e6ccd36e939a196356f1d5c16372422f5137b" },
 ]
 
 [[package]]

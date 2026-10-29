@@ -11,8 +11,18 @@ dependencies = ["typing-extensions>=4.13"]
 [project.scripts]
 cfn-typegen = "cfn_typed.typegen:main"
 
+[project.optional-dependencies]
+yaml = [
+    "pyyaml>=6",
+]
+
 [dependency-groups]
-dev = ["ty", "pytest"]
+dev = [
+    "ty",
+    "pytest",
+    "pyyaml>=6.0.3",
+    "types-pyyaml>=6.0.12.20260906",
+]
 docs = ["zensical"]
 
 [build-system]

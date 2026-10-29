@@ -1,0 +1,47 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  WorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+  WorkerLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 30
+  Worker:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: deploy-artifacts
+        S3Key: my-service/package.zip
+      Handler: handler.cleanup
+      Runtime: python3.12
+      MemorySize: 512
+      Timeout: 600
+      Role: !GetAtt WorkerRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref WorkerLogs
+  WorkerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: cron(0 3 * * ? *)
+      State: ENABLED
+      Targets:
+        - Id: Target0
+          Arn: !GetAtt Worker.Arn
+  WorkerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref Worker
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt WorkerRule.Arn

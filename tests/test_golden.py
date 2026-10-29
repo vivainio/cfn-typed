@@ -16,6 +16,7 @@ import data_consumer  # noqa: E402
 import data_platform  # noqa: E402
 import intrinsics_demo  # noqa: E402
 import minimal  # noqa: E402
+import serverless  # noqa: E402
 import web_stack  # noqa: E402
 
 from cfn_typed.testing import assert_matches_file, assert_references_resolve  # noqa: E402
@@ -50,3 +51,7 @@ def test_data_consumer() -> None:
 
 def test_intrinsics_demo() -> None:
     check(intrinsics_demo.build(), "intrinsics.yaml")
+
+
+def test_serverless() -> None:
+    check(serverless.build(), "serverless.yaml")

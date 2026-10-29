@@ -30,6 +30,7 @@ nav = [
     { "Publishing values through SSM" = "patterns/publishing.md" },
     { "Parameters as variables" = "patterns/parameters.md" },
     { "CDK L2 constructs as patterns" = "patterns/cdk-l2.md" },
+    { "Serverless Framework in a few lines" = "patterns/serverless.md" },
     { "Composing fragments" = "patterns/composing.md" },
     { "A complete stack" = "patterns/complete-stack.md" },
   ] },

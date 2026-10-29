@@ -91,5 +91,5 @@ cfn-typegen --out examples/cfn_types AWS::SQS::Queue AWS::Lambda::Function \
     AWS::Lambda::EventSourceMapping AWS::IAM::Role
 uv run ty check
 uv run pytest
-uv run zensical serve        # the book
+scripts/build-docs.sh        # generate types and reference pages, build the book (needs zensical)
 ```

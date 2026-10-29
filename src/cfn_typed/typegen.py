@@ -247,6 +247,15 @@ from cfn_typed.intrinsics import Expr as _Expr
     return head + "\n\n" + "\n\n\n".join(mod.blocks) + "\n"
 
 
+def ensure_schemas(path: Path) -> Path:
+    """Return `path`, downloading the schema zip there first if it is missing."""
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"downloading {SCHEMA_URL}")
+        urllib.request.urlretrieve(SCHEMA_URL, path)
+    return path
+
+
 def load_schemas(zip_path: Path) -> list[Schema]:
     with zipfile.ZipFile(zip_path) as zf:
         return [json.loads(zf.read(n)) for n in sorted(zf.namelist()) if n.endswith(".json")]
@@ -297,11 +306,7 @@ def main(argv: list[str] | None = None) -> None:
     patterns = args.types + [t for path in args.template for t in template_types(path)]
     if not patterns and not args.all:
         ap.error("name resource types, pass --template, or use --all")
-    if not args.schemas.exists():
-        args.schemas.parent.mkdir(parents=True, exist_ok=True)
-        print(f"downloading {SCHEMA_URL}")
-        urllib.request.urlretrieve(SCHEMA_URL, args.schemas)
-    schemas = load_schemas(args.schemas)
+    schemas = load_schemas(ensure_schemas(args.schemas))
     write(args.out, schemas if args.all else select(schemas, patterns))
 
 

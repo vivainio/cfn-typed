@@ -4,3 +4,4 @@ __pycache__/
 site/
 .cache/
 examples/cfn_types/
+docs/reference/

@@ -4,8 +4,9 @@ from pathlib import Path
 
 from cfn_typed import typegen
 
-OUT = Path(__file__).parent.parent / "examples" / "cfn_types"
-TYPES = ["AWS::SQS::Queue", "AWS::Lambda::Function", "AWS::Lambda::EventSourceMapping", "AWS::IAM::Role"]
+EXAMPLES = Path(__file__).parent.parent / "examples"
+OUT = EXAMPLES / "cfn_types"
 
 if not OUT.exists():
-    typegen.main(["--out", str(OUT), *TYPES])
+    types = [t for t in (EXAMPLES / "types.txt").read_text().split("\n") if t and not t.startswith("#")]
+    typegen.main(["--out", str(OUT), *types])

@@ -25,6 +25,7 @@ nav = [
     { "A complete stack" = "patterns/complete-stack.md" },
   ] },
   { "The generator" = "generator.md" },
+  { "Reference" = "reference/index.md" },
 ]
 
 [project.theme]

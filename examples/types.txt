@@ -1,0 +1,5 @@
+# Resource types the examples, tests and book use. One per line.
+AWS::SQS::Queue
+AWS::Lambda::Function
+AWS::Lambda::EventSourceMapping
+AWS::IAM::Role

@@ -13,6 +13,11 @@ keyword-argument factory for each resource type **you choose**, so a typo, a wro
 type or a missing required property is an error in your editor and in `ty`, long
 before CloudFormation sees the template.
 
+<figure markdown="span">
+  ![The IQ bell curve meme. In the middle, a crying figure lists CDK, Pulumi, Serverless, SAM and Terraform. At both tails, plain CloudFormation.](assets/cloudformation-bell-curve.jpg){ width="560" }
+  <figcaption>Where plain CloudFormation sits on the curve, now with types.</figcaption>
+</figure>
+
 ```python
 from cfn_types import lambda_
 

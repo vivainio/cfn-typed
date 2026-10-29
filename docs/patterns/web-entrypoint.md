@@ -19,7 +19,7 @@ web_entrypoint(
 )
 ```
 
-creates these logical IDs:
+creates these logical IDs ([the rendered YAML](../rendered/web-stack.md) shows the full stack):
 
 | Logical ID | Resource |
 |---|---|

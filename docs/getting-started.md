@@ -39,7 +39,8 @@ The whole program is one file: build the template as data, print it as JSON.
 --8<-- "examples/minimal.py:main"
 ```
 
-`build` is a pure function of its arguments, so tests can call it directly. `main`
+`build` is a pure function of its arguments, so tests can call it directly. The [rendered
+YAML](rendered/minimal.md) is in the book. `main`
 only reads the stage from the command line and prints. Render and deploy:
 
 ```sh
@@ -85,6 +86,22 @@ resources (the tags in the examples) is repeated, never turned into a YAML ancho
     form (`Fn::Base64: !Sub ...`). Functions with no short form, such as `Fn::Length`,
     also stay long. Parsing the YAML back gives exactly the template you started with;
     the test suite checks that round trip.
+
+## Check the rendered YAML in CI
+
+Commit what your code renders, and let CI fail when the two disagree, so that every template
+change appears as a diff in the pull request:
+
+```python
+from cfn_typed.testing import assert_matches_file
+
+def test_jobs_prod() -> None:
+    assert_matches_file(build("prod"), "rendered/jobs-prod.yaml")
+```
+
+Run the tests with `CFN_TYPED_UPDATE=1` to create or accept the files. The
+[testing page](testing.md) has the CI workflow and the details. You can see a committed example
+under [rendered examples](rendered/index.md).
 
 ## Let the checker help
 

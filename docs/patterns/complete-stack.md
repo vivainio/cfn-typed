@@ -12,6 +12,8 @@ dead-letter queue and a concurrency cap. This is
 [Lambda execution role](lambda-role.md) page, and the patterns are the ones from the previous
 pages.
 
+[See the rendered YAML](../rendered/sqs-worker.md) for the prod stage.
+
 The stage comes from `sys.argv`, so one source file renders every environment:
 
 ```sh

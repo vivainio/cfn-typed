@@ -27,6 +27,12 @@ nav = [
     { "Composing fragments" = "patterns/composing.md" },
     { "A complete stack" = "patterns/complete-stack.md" },
   ] },
+  { "Rendered examples" = [
+    { "Overview" = "rendered/index.md" },
+    { "Minimal stack" = "rendered/minimal.md" },
+    { "Web stack" = "rendered/web-stack.md" },
+    { "SQS worker" = "rendered/sqs-worker.md" },
+  ] },
   { "Testing with golden templates" = "testing.md" },
   { "Distributing patterns" = "distributing.md" },
   { "The generator" = "generator.md" },

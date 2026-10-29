@@ -47,6 +47,10 @@ lambda_.function(
     Plain functions that return a resource or a small fragment of several. The
     book's main subject.
 
+- :lucide-file-text: **[Rendered examples](rendered/index.md)**
+
+    The YAML each example produces, committed and checked by CI.
+
 - :lucide-cog: **[The generator](generator.md)**
 
     How `cfn-typegen` chooses types, and what the generated code looks like.

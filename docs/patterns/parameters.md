@@ -62,8 +62,8 @@ A stack calls only what it needs:
 - **Nothing organisation-specific is in `cfn-typed`.** It supplies the mechanism (`Params`);
   your defaults package supplies the names and paths.
 
-The rendered YAML has the parameters first, and every use is `!Ref VpcId`,
-`!Ref PrivateSubnets`:
+The [full rendered stack](../rendered/web-stack.md) has the parameters first, and every use is
+`!Ref VpcId`, `!Ref PrivateSubnets`:
 
 ```yaml
 Parameters:

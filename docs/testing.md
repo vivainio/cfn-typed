@@ -46,6 +46,47 @@ def test_orders_prod() -> None:
 - **A refactor that should change nothing proves it.** Restructure a pattern, run the tests,
   and an unchanged set of golden files shows that the output is identical.
 
+## Make it part of your CI
+
+Do this in every repository that renders templates with `cfn-typed`. It is one test file and a
+few lines of workflow, and it turns every template change into a reviewed diff. A GitHub
+Actions workflow (this repository's own CI is the same shape):
+
+```yaml
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync
+      # only if you generate the types in CI rather than committing them:
+      - run: uv run cfn-typegen --no-docs --out cfn_types $(grep -v '^#' types.txt)
+      - run: uv run ty check
+      - run: uv run pytest        # includes the golden-template tests
+```
+
+`pytest` fails when a rendered file differs from the code or is missing, which is the whole
+check. Run it on pull requests as well as on `main`, so the diff is reviewed *before* the
+change lands, and commit the regenerated files in the same pull request as the code change.
+
+Two habits that make it dependable:
+
+- **Pin your tool versions.** The YAML text comes from PyYAML, so an upgrade that changes its
+  formatting would show up as a diff in every golden file. Commit your lock file (`uv.lock`) so CI
+  and your laptop render with the same versions, and upgrade `cfn-typed` and `pyyaml` on purpose,
+  in their own pull request.
+- **One file per stack and stage.** `orders-dev.yaml` and `orders-prod.yaml` side by side make
+  the difference between environments something you can read.
+
+If you also run `cfn-lint`, point it at the committed files in the same job.
+
 ## Accepting an intended change
 
 When the diff is what you meant, regenerate the files and commit them with the code change:
@@ -71,8 +112,8 @@ keeps keys in insertion order and never emits YAML anchors. What remains is up t
 - Take inputs such as the stage as **arguments**, as `build("prod")` does, rather than reading
   the environment inside the stack.
 
-These are the same rules that keep a generator [easy to reason about](index.md); the golden
-test just enforces them.
+These are the same rules that keep a generator easy to reason about; the golden test just
+enforces them.
 
 ## What it does and does not check
 

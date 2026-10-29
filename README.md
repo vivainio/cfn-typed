@@ -59,6 +59,14 @@ generated property uses), `base` (`Template`, `Tag`, `build`) and a few helpers.
 `examples/` has a worked SQS + Lambda stack and `examples/cfn_types/` is its
 generated output.
 
+## Pattern helpers
+
+`cfn_typed.patterns` has plain functions that return a resource or a small
+fragment of several, to combine with `|`: `lambda_role`, `sqs_event_source` and
+`queue_with_dlq("Order")` (logical IDs `OrderQueue` and `OrderDLQ`). They are
+built with a small private generated subset (`cfn_typed/_gen`) and return
+`AnyResource` / `Resources`, so they mix with the types you generate yourself.
+
 ## Type checking notes
 
 Read-only properties (`Arn`, `Id`, ...) are left out of the inputs. Shapes whose

@@ -4,8 +4,8 @@ import json
 import sys
 
 import cfn_typed as cfn
-from cfn_types import lambda_, sqs
-from patterns import lambda_role, sqs_event_source
+from cfn_types import lambda_
+from cfn_typed.patterns import lambda_role, queue_with_dlq, sqs_event_source
 
 service = "order-processor"
 stage = sys.argv[1] if len(sys.argv) > 1 else "dev"
@@ -32,12 +32,7 @@ template: cfn.Template = {
             Tags=t,
         ),
         "ProcessorEventSourceMapping": sqs_event_source("Processor", cfn.get_att("OrderQueue", "Arn")),
-        "OrderDLQ": sqs.queue(Tags=t),
-        "OrderQueue": sqs.queue(
-            VisibilityTimeout=180,
-            RedrivePolicy={"deadLetterTargetArn": cfn.get_att("OrderDLQ", "Arn"), "maxReceiveCount": 3},
-            Tags=t,
-        ),
+        **queue_with_dlq("Order", visibility_timeout=180, tags=t),
     },
     "Outputs": {
         "QueueUrl": {"Value": cfn.ref("OrderQueue")},

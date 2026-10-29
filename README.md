@@ -6,6 +6,11 @@ schemas** (1,873 resource types), so a type checker catches typos, wrong types
 and missing required properties before CloudFormation does. Checked with
 [`ty`](https://docs.astral.sh/ty/).
 
+**[Read the book](https://vivainio.github.io/cfn-typed/)** for a getting-started guide, a gallery of
+pattern helpers (a Lambda role, a queue with its dead-letter queue, ...) and a
+reference page per resource. Install from [PyPI](https://pypi.org/project/cfn-typed/):
+`uv add cfn-typed` (or `uv add 'cfn-typed[yaml]'` for YAML output).
+
 ```python
 import json
 import cfn_typed as cfn

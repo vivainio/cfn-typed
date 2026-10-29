@@ -7,8 +7,7 @@ uv add cfn-typed          # the runtime pieces and the cfn-typegen command
 uv add --dev ty           # the type checker this project is tested with
 ```
 
-Until it is on PyPI, install from GitHub:
-`uv add git+https://github.com/vivainio/cfn-typed`. Python 3.14 or later is required.
+Python 3.14 or later is required. The `yaml` extra adds YAML output (see below).
 
 ## Generate the types you use
 

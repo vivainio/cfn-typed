@@ -81,3 +81,53 @@ def test_generated_files_opt_out_of_formatters_and_linters() -> None:
     lines = gen.render_module("AWS::Foo", [WIDGET]).splitlines()
     assert lines[0].startswith(gen.MARKER)  # `cfn-typegen` recognises its own files by this line
     assert lines[1:3] == ["# fmt: off", "# ruff: noqa"]
+
+
+SEARCH_SET: list[dict[str, Any]] = [
+    {"typeName": "AWS::ElasticLoadBalancingV2::LoadBalancer", "description": "An application or network load balancer."},
+    {"typeName": "AWS::ElasticLoadBalancingV2::Listener", "description": "Listens on a port of a load balancer."},
+    {"typeName": "AWS::ElasticLoadBalancing::LoadBalancer", "description": "A classic load balancer."},
+    {"typeName": "AWS::Route53::RecordSet", "description": "Can point at a load balancer."},
+    {"typeName": "AWS::SQS::Queue", "description": "A queue."},
+]
+
+
+def names(found: list[dict[str, Any]]) -> list[str]:
+    return [s["typeName"] for s in found]
+
+
+def test_search_requires_every_word_and_ignores_case() -> None:
+    assert "AWS::SQS::Queue" not in names(gen.search(SEARCH_SET, ["LOAD", "balancer"]))
+    assert names(gen.search(SEARCH_SET, ["queue"])) == ["AWS::SQS::Queue"]
+    assert gen.search(SEARCH_SET, ["load", "nonsense"]) == []
+
+
+def test_search_ranks_resource_name_then_type_name_then_description() -> None:
+    assert names(gen.search(SEARCH_SET, ["loadbalancer"])) == [
+        "AWS::ElasticLoadBalancing::LoadBalancer",    # in the resource name, shorter first
+        "AWS::ElasticLoadBalancingV2::LoadBalancer",
+    ]
+    found = names(gen.search(SEARCH_SET, ["load", "balancer"]))
+    assert found[:2] == ["AWS::ElasticLoadBalancing::LoadBalancer", "AWS::ElasticLoadBalancingV2::LoadBalancer"]
+    # "balancer" is not in "ElasticLoadBalancing", so these two match through their descriptions only
+    assert found[2:] == ["AWS::Route53::RecordSet", "AWS::ElasticLoadBalancingV2::Listener"]
+
+
+def test_search_hides_descriptions_that_only_repeat_the_name() -> None:
+    assert gen._BOILERPLATE.fullmatch("Resource Type definition for AWS::Foo::Bar")
+    assert gen._BOILERPLATE.fullmatch("Resource schema for AWS::Foo::Bar.")
+    assert not gen._BOILERPLATE.fullmatch("Resource Type definition for AWS::Foo::Bar, which does more")
+
+
+def test_search_command_prints_names(capsys: Any, tmp_path: Any) -> None:
+    import json
+    import zipfile
+
+    zip_path = tmp_path / "schemas.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        for i, schema in enumerate(SEARCH_SET):
+            zf.writestr(f"{i}.json", json.dumps(schema))
+    gen.main(["search", "queue", "--schemas", str(zip_path)])
+    captured = capsys.readouterr()
+    assert captured.out.startswith("AWS::SQS::Queue") and "A queue." in captured.out
+    assert "1 match" in captured.err

@@ -3,3 +3,8 @@ AWS::SQS::Queue
 AWS::Lambda::Function
 AWS::Lambda::EventSourceMapping
 AWS::IAM::Role
+AWS::ElasticLoadBalancingV2::LoadBalancer
+AWS::ElasticLoadBalancingV2::TargetGroup
+AWS::ElasticLoadBalancingV2::Listener
+AWS::EC2::SecurityGroup
+AWS::EC2::SecurityGroupIngress

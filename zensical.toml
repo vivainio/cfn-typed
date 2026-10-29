@@ -21,6 +21,8 @@ nav = [
     { "Lambda execution role" = "patterns/lambda-role.md" },
     { "Queue with a dead-letter queue" = "patterns/queue-with-dlq.md" },
     { "SQS-triggered Lambda" = "patterns/sqs-trigger.md" },
+    { "Load balancer building blocks" = "patterns/load-balancer.md" },
+    { "One load balancer, several ports" = "patterns/web-entrypoint.md" },
     { "Composing fragments" = "patterns/composing.md" },
     { "A complete stack" = "patterns/complete-stack.md" },
   ] },

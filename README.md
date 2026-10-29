@@ -44,6 +44,7 @@ cfn-typegen --out cfn_types AWS::SQS::Queue 'AWS::Lambda::*'
 cfn-typegen --out cfn_types --template template.json   # types a JSON template uses
 cfn-typegen --out cfn_types --all                      # everything, ~5.8 MB, ~4 MB with --no-docs
 cfn-typegen --out cfn_types --no-docs AWS::SQS::Queue  # leave out the description docstrings
+cfn-typegen search load balancer                       # find a type name
 ```
 
 Type names are case-insensitive globs and an unmatched name is an error. The

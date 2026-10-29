@@ -17,6 +17,22 @@ a local copy. A rerun replaces only files it generated earlier.
 `--no-docs` leaves out the description docstrings (the first sentence of each property's
 AWS documentation). The types are identical; the output is about 30% smaller.
 
+## Finding a type name
+
+Not sure what a resource is called? Search by words in the name or description:
+
+```sh
+$ cfn-typegen search load balancer --limit 4
+AWS::Lightsail::LoadBalancer
+AWS::ElasticLoadBalancing::LoadBalancer
+AWS::ElasticLoadBalancingV2::LoadBalancer   Specifies an Application Load Balancer, a Network Load Balancer, ...
+AWS::Lightsail::LoadBalancerTlsCertificate
+```
+
+Every word must match. A hit in the resource's own name ranks above a hit elsewhere in the
+type name, which ranks above a hit only in the description. Descriptions that merely
+repeat the name are hidden. Copy the names you want into a generate command.
+
 ## What one resource looks like
 
 For `AWS::SQS::Queue`, one module `sqs.py` holds:

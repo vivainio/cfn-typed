@@ -5,6 +5,7 @@
     cfn-typegen --out cfn_types --template template.json   # only the types a template uses
     cfn-typegen --out cfn_types --all                      # everything
     cfn-typegen --out cfn_types --no-docs AWS::SQS::Queue          # without description docstrings
+    cfn-typegen search load balancer                               # find type names
 
 Type names are case-insensitive globs. The schema zip is downloaded once into
 ~/.cache/cfn-typegen/, or pass --schemas to use a local CloudformationSchema.zip.
@@ -22,6 +23,7 @@ import fnmatch
 import json
 import keyword
 import os
+import shutil
 import re
 import sys
 import urllib.request
@@ -306,8 +308,59 @@ def write(out: Path, schemas: list[Schema], docs: bool = True) -> None:
     print(f"wrote {sum(map(len, groups.values()))} resources in {len(groups)} modules to {out}")
 
 
+_BOILERPLATE = re.compile(r"Resource (type definition|schema) for [\w:]+\.?", re.I)  # says nothing the name does not
+
+
+def search(schemas: list[Schema], terms: list[str]) -> list[Schema]:
+    """Schemas whose name or description contains every term, best matches first.
+
+    A hit in the resource's own name beats a hit anywhere in the type name, which beats a
+    hit only in the description; shorter names come first within each group.
+    """
+    words = [t.lower() for t in terms]
+    ranked = []
+    for schema in schemas:
+        name = schema["typeName"].lower()
+        resource = name.rsplit("::", 1)[-1]
+        text = name + " " + (schema.get("description") or "").lower()
+        if not all(w in text for w in words):
+            continue
+        tier = 0 if all(w in resource for w in words) else 1 if all(w in name for w in words) else 2
+        ranked.append((tier, len(name), name, schema))
+    return [schema for *_, schema in sorted(ranked, key=lambda r: r[:3])]
+
+
+def search_main(argv: list[str]) -> None:
+    ap = argparse.ArgumentParser(
+        prog="cfn-typegen search",
+        description="Find resource types by words in their name or description, then pass the names to cfn-typegen.",
+    )
+    ap.add_argument("terms", nargs="+", help="words that must all match, e.g. load balancer")
+    ap.add_argument("--limit", type=int, default=20, help="most results to show (default 20)")
+    ap.add_argument("--schemas", type=Path, default=CACHE, help="CloudformationSchema.zip (downloaded if missing)")
+    args = ap.parse_args(argv)
+
+    found = search(load_schemas(ensure_schemas(args.schemas)), args.terms)
+    shown = found[: args.limit]
+    width = max((len(s["typeName"]) for s in shown), default=0)
+    columns = shutil.get_terminal_size((100, 24)).columns
+    for schema in shown:
+        desc = short(schema.get("description")) or ""
+        desc = "" if _BOILERPLATE.fullmatch(desc) else desc
+        room = max(columns - width - 3, 0)
+        print(f"{schema['typeName']:<{width}}  {desc[:room]}".rstrip())
+    sys.stdout.flush()
+    if not found:
+        sys.exit(f"no resource type matches: {' '.join(args.terms)}")
+    more = f" (showing {len(shown)}, use --limit)" if len(found) > len(shown) else ""
+    print(f"\n{len(found)} match{'es' if len(found) != 1 else ''}{more}. Generate with: cfn-typegen --out DIR <type>...", file=sys.stderr)
+
+
 def main(argv: list[str] | None = None) -> None:
-    ap = argparse.ArgumentParser(prog="cfn-typegen", description="Generate typed CloudFormation resource modules.")
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["search"]:
+        return search_main(argv[1:])
+    ap = argparse.ArgumentParser(prog="cfn-typegen", description="Generate typed CloudFormation resource modules.", epilog="Not sure of a type name? Run: cfn-typegen search WORD...")
     ap.add_argument("types", nargs="*", help="resource types or globs, e.g. AWS::SQS::Queue or 'AWS::Lambda::*'")
     ap.add_argument("--out", type=Path, required=True, help="directory to write the modules into")
     ap.add_argument("--template", type=Path, action="append", default=[], help="JSON template; emit the types it uses")

@@ -45,5 +45,7 @@ does not contain it; it is generated when the tests run.
 | [Lambda execution role](lambda-role.md) | one `AWS::IAM::Role` |
 | [Queue with a dead-letter queue](queue-with-dlq.md) | `{name}Queue` and `{name}DLQ` |
 | [SQS-triggered Lambda](sqs-trigger.md) | one `AWS::Lambda::EventSourceMapping` |
+| [Load balancer building blocks](load-balancer.md) | a load balancer, target group, listener or ingress rule |
+| [One load balancer, several ports](web-entrypoint.md) | security group, load balancer, and a target group and listener per port |
 | [Composing fragments](composing.md) | nothing, but how to combine the above safely |
 | [A complete stack](complete-stack.md) | all of the above in one template |

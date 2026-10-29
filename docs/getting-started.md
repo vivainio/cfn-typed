@@ -18,6 +18,8 @@ into your own project:
 cfn-typegen --out cfn_types AWS::SQS::Queue 'AWS::Lambda::*' AWS::IAM::Role
 ```
 
+Not sure of a name? `cfn-typegen search queue` lists matching types.
+
 Or point it at a template that already exists and it emits exactly the types that
 template uses:
 

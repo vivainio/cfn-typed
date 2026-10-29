@@ -30,6 +30,14 @@ class AnyResource(ResourceAttrs):
     Properties: NotRequired[ReadOnly[Mapping[str, Any]]]
 
 
+class Parameter(TypedDict):
+    Type: str
+    Default: NotRequired[str | int | float]
+    Description: NotRequired[str]
+    AllowedValues: NotRequired[list[str]]
+    NoEcho: NotRequired[bool]
+
+
 class Output(TypedDict):
     Value: Expr[str]
     Description: NotRequired[str]
@@ -43,7 +51,7 @@ type Resources = dict[str, AnyResource]
 class Template(TypedDict):
     AWSTemplateFormatVersion: NotRequired[str]
     Description: NotRequired[str]
-    Parameters: NotRequired[dict[str, dict[str, Any]]]
+    Parameters: NotRequired[dict[str, Parameter]]
     Mappings: NotRequired[dict[str, dict[str, Any]]]
     Conditions: NotRequired[dict[str, Any]]
     Resources: Resources

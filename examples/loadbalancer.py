@@ -15,7 +15,7 @@ from cfn_typed import Expr, Resources, Tag, ref
 # --8<-- [start:load_balancer]
 def load_balancer(
     *,
-    subnets: list[Expr[str]],
+    subnets: Expr[list[Expr[str]]],
     security_groups: list[Expr[str]],
     scheme: Literal["internet-facing", "internal"] = "internet-facing",
     idle_timeout: int = 60,
@@ -120,7 +120,7 @@ def web_entrypoint(
     name: str,
     *,
     vpc_id: Expr[str],
-    subnets: list[Expr[str]],
+    subnets: Expr[list[Expr[str]]],
     ports: Sequence[int],
     allowed_cidrs: Sequence[str],
     scheme: Literal["internet-facing", "internal"] = "internet-facing",

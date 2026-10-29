@@ -66,6 +66,11 @@ generated property uses), `base` (`Template`, `Tag`, `build`) and a few helpers.
 `examples/` has a worked SQS + Lambda stack and `examples/cfn_types/` is its
 generated output.
 
+## Parameters as variables
+
+`cfn.Params` declares template parameters (plain or SSM-backed) once and returns the `Ref` to use,
+so a shared "defaults" package can expose a VPC id or subnet list as variables. See the book.
+
 ## JSON or YAML
 
 `cfn.to_json(template)` and `cfn.to_yaml(template)` (YAML needs `cfn-typed[yaml]`) render

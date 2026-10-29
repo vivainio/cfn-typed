@@ -23,6 +23,7 @@ nav = [
     { "SQS-triggered Lambda" = "patterns/sqs-trigger.md" },
     { "Load balancer building blocks" = "patterns/load-balancer.md" },
     { "One load balancer, several ports" = "patterns/web-entrypoint.md" },
+    { "Parameters as variables" = "patterns/parameters.md" },
     { "Composing fragments" = "patterns/composing.md" },
     { "A complete stack" = "patterns/complete-stack.md" },
   ] },

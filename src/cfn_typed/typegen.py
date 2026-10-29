@@ -250,7 +250,12 @@ def render_module(title: str, schemas: list[Schema], docs: bool = True) -> str:
             f"    return build({type_name!r}, props, depends_on, deletion_policy, update_replace_policy, condition, metadata)",
         ]))
     body = "\n\n\n".join(mod.blocks)
-    head = f"{MARKER} from the CloudFormation registry schemas. Do not edit.\n" f'"""{title} resources."""\n\n' + imports(body)
+    head = (
+        f"{MARKER} from the CloudFormation registry schemas. Do not edit.\n"
+        "# fmt: off\n# ruff: noqa\n"  # generated code: formatters and linters leave it alone
+        f'"""{title} resources."""\n\n'
+    )
+    head += imports(body)
     return head + "\n\n" + body + "\n"
 
 
@@ -294,7 +299,7 @@ def write(out: Path, schemas: list[Schema], docs: bool = True) -> None:
     for f in out.glob("*.py"):  # drop only what an earlier run generated
         if f.read_text().startswith(MARKER):
             f.unlink()
-    (out / "__init__.py").write_text(f"{MARKER}.\n")
+    (out / "__init__.py").write_text(f'{MARKER}.\n"""Generated CloudFormation resource modules, one per service."""\n')
     for svc, items in sorted(groups.items()):
         title = "::".join(items[0]["typeName"].split("::")[:2])
         (out / f"{svc}.py").write_text(render_module(title, items, docs))

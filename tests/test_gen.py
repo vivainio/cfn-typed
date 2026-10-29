@@ -75,3 +75,9 @@ def test_no_docs_drops_docstrings_but_not_types() -> None:
     ns: dict[str, Any] = {}
     exec(compile(without, "<widget>", "exec"), ns)
     assert ns["widget"](Name="w") == {"Type": "AWS::Foo::Widget", "Properties": {"Name": "w"}}
+
+
+def test_generated_files_opt_out_of_formatters_and_linters() -> None:
+    lines = gen.render_module("AWS::Foo", [WIDGET]).splitlines()
+    assert lines[0].startswith(gen.MARKER)  # `cfn-typegen` recognises its own files by this line
+    assert lines[1:3] == ["# fmt: off", "# ruff: noqa"]

@@ -28,6 +28,9 @@ For `AWS::SQS::Queue`, one module `sqs.py` holds:
 | `queue(**props)` | a factory; keyword arguments are checked against `QueueProps` |
 | one class per nested definition | named `{Resource}{Definition}`, for example `FunctionCode` |
 
+The files start with `# fmt: off` and `# ruff: noqa`, so `ruff format --check` and `ruff check`
+(or black) leave generated code alone and you do not need to exclude the directory.
+
 Factories also take `depends_on`, `deletion_policy`, `update_replace_policy`,
 `condition` and `metadata` as snake_case keywords, so they never collide with a
 property name. Python keywords and builtins get a trailing underscore

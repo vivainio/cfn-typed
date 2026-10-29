@@ -8,3 +8,10 @@ AWS::ElasticLoadBalancingV2::TargetGroup
 AWS::ElasticLoadBalancingV2::Listener
 AWS::EC2::SecurityGroup
 AWS::EC2::SecurityGroupIngress
+AWS::S3::Bucket
+AWS::S3::BucketPolicy
+AWS::KMS::Key
+AWS::KMS::Alias
+AWS::DynamoDB::Table
+AWS::SSM::Parameter
+AWS::ECR::Repository

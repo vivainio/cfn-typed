@@ -1,0 +1,148 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - test
+      - prod
+  DeployRoleArn:
+    Type: String
+    Description: 'The role that deploys this stack: it must keep bucket access'
+Resources:
+  DataKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Data encryption key
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableIamPolicies
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+      Tags:
+        - Key: Stage
+          Value: !Ref Stage
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+  DataKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/data-platform
+      TargetKeyId: !Ref DataKey
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt DataKey.Arn
+            BucketKeyEnabled: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: archive
+            Status: Enabled
+            Transitions:
+              - StorageClass: GLACIER
+                TransitionInDays: 90
+      Tags:
+        - Key: Stage
+          Value: !Ref Stage
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+  DataBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref DataBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt DataBucket.Arn
+              - !Join
+                - ''
+                - - !GetAtt DataBucket.Arn
+                  - /*
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+          - Sid: DenyEveryoneElse
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt DataBucket.Arn
+              - !Join
+                - ''
+                - - !GetAtt DataBucket.Arn
+                  - /*
+            Condition:
+              StringNotLike:
+                aws:PrincipalArn:
+                  - !Ref DeployRoleArn
+                  - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/data-platform-*
+  EventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      DeletionProtectionEnabled: true
+      Tags:
+        - Key: Stage
+          Value: !Ref Stage
+  ConfigTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      DeletionProtectionEnabled: true
+      Tags:
+        - Key: Stage
+          Value: !Ref Stage
+  KeyArnParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Type: String
+      Name: /data-platform/storage/key-arn
+      Value: !GetAtt DataKey.Arn
+  BucketArnParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Type: String
+      Name: /data-platform/storage/bucket-arn
+      Value: !GetAtt DataBucket.Arn

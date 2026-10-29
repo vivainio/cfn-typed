@@ -47,6 +47,8 @@ does not contain it; it is generated when the tests run.
 | [SQS-triggered Lambda](sqs-trigger.md) | one `AWS::Lambda::EventSourceMapping` |
 | [Load balancer building blocks](load-balancer.md) | a load balancer, target group, listener or ingress rule |
 | [One load balancer, several ports](web-entrypoint.md) | security group, load balancer, and a target group and listener per port |
+| [Encrypted storage](storage.md) | a KMS key, a private bucket and its policy, a table, a repository |
+| [Publishing values through SSM](publishing.md) | SSM parameters that one stack publishes and another reads |
 | [Parameters as variables](parameters.md) | template parameters (including SSM), declared once and used as variables |
 | [Composing fragments](composing.md) | nothing, but how to combine the above safely |
 | [A complete stack](complete-stack.md) | all of the above in one template |

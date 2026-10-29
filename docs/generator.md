@@ -11,11 +11,25 @@ cfn-typegen --out cfn_types --no-docs AWS::SQS::Queue     # without description 
 ```
 
 Type names are case-insensitive globs and an unmatched name is an error. The
-schema zip is downloaded once into `~/.cache/cfn-typegen/`; `--schemas` points at
+schema zip is downloaded once into `~/.cache/cfn-typegen/` and reused; `--schemas` points at
 a local copy. A rerun replaces only files it generated earlier.
 
 `--no-docs` leaves out the description docstrings (the first sentence of each property's
 AWS documentation). The types are identical; the output is about 30% smaller.
+
+## Refreshing
+
+The cached schemas are never updated on their own, so a resource or property AWS added last
+week will not appear. To pick it up, download the schemas again and regenerate:
+
+```sh
+cfn-typegen --refresh --out cfn_types AWS::SQS::Queue AWS::Lambda::Function
+```
+
+`--refresh` re-downloads the zip first (also available on `search`). A failed download leaves
+the existing cache untouched. Each generated file records the snapshot it came from, in a
+header line such as `# Schema snapshot: sha256:3f9c1a0b7d2e`, so you can tell whether two
+outputs match. Regenerating with the same command replaces the files from the earlier run.
 
 ## Finding a type name
 

@@ -1,5 +1,7 @@
 from typing import Any
 
+import pytest
+
 from cfn_typed import typegen as gen
 
 WIDGET: dict[str, Any] = {
@@ -131,3 +133,47 @@ def test_search_command_prints_names(capsys: Any, tmp_path: Any) -> None:
     captured = capsys.readouterr()
     assert captured.out.startswith("AWS::SQS::Queue") and "A queue." in captured.out
     assert "1 match" in captured.err
+
+
+def test_header_records_which_schema_snapshot_generated_the_file(tmp_path: Any) -> None:
+    import hashlib
+    import json
+    import zipfile
+
+    assert "Schema snapshot" not in gen.render_module("AWS::Foo", [WIDGET])  # only when a stamp is given
+    zip_path = tmp_path / "schemas.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("w.json", json.dumps(WIDGET))
+    stamp = gen.schema_stamp(zip_path)
+    assert stamp == "sha256:" + hashlib.sha256(zip_path.read_bytes()).hexdigest()[:12]
+    out = tmp_path / "types"
+    gen.main(["--out", str(out), "--schemas", str(zip_path), "AWS::Foo::Widget"])
+    header = (out / "foo.py").read_text().splitlines()
+    assert header[0].startswith(gen.MARKER) and f"# Schema snapshot: {stamp}" in header[:6]
+
+
+def test_refresh_redownloads_only_when_asked_and_keeps_the_cache_on_failure(tmp_path: Any, monkeypatch: Any) -> None:
+    import zipfile
+
+    source = tmp_path / "source.zip"
+    cache = tmp_path / "cache" / "schemas.zip"
+
+    def publish(content: str) -> None:
+        with zipfile.ZipFile(source, "w") as zf:
+            zf.writestr("a.json", content)
+
+    monkeypatch.setattr(gen, "SCHEMA_URL", source.as_uri())
+    publish("{}")
+    gen.ensure_schemas(cache)                       # first use downloads
+    first = cache.read_bytes()
+    publish('{"typeName": "AWS::New::Thing"}')
+    gen.ensure_schemas(cache)                       # cached: not downloaded again
+    assert cache.read_bytes() == first
+    gen.ensure_schemas(cache, refresh=True)         # --refresh picks up the new snapshot
+    assert cache.read_bytes() != first
+    good = cache.read_bytes()
+    monkeypatch.setattr(gen, "SCHEMA_URL", (tmp_path / "missing.zip").as_uri())
+    with pytest.raises(OSError):
+        gen.ensure_schemas(cache, refresh=True)
+    assert cache.read_bytes() == good               # a failed refresh leaves the old cache intact
+    assert list(cache.parent.iterdir()) == [cache]  # and no half-downloaded file

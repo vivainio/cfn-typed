@@ -6,6 +6,7 @@
     cfn-typegen --out cfn_types --all                      # everything
     cfn-typegen --out cfn_types --no-docs AWS::SQS::Queue          # without description docstrings
     cfn-typegen search load balancer                               # find type names
+    cfn-typegen --refresh --out cfn_types AWS::SQS::Queue          # re-download the schemas first
 
 Type names are case-insensitive globs. The schema zip is downloaded once into
 ~/.cache/cfn-typegen/, or pass --schemas to use a local CloudformationSchema.zip.
@@ -20,6 +21,7 @@ checked against `QueueProps`. Every property is `Expr[T]`, so intrinsics such as
 import argparse
 import builtins
 import fnmatch
+import hashlib
 import json
 import keyword
 import os
@@ -222,7 +224,7 @@ def imports(body: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_module(title: str, schemas: list[Schema], docs: bool = True) -> str:
+def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: str | None = None) -> str:
     mod = Module()
     plans = []
     for s in sorted(schemas, key=lambda s: s["typeName"]):
@@ -252,22 +254,32 @@ def render_module(title: str, schemas: list[Schema], docs: bool = True) -> str:
             f"    return build({type_name!r}, props, depends_on, deletion_policy, update_replace_policy, condition, metadata)",
         ]))
     body = "\n\n\n".join(mod.blocks)
-    head = (
-        f"{MARKER} from the CloudFormation registry schemas. Do not edit.\n"
-        "# fmt: off\n# ruff: noqa\n"  # generated code: formatters and linters leave it alone
-        f'"""{title} resources."""\n\n'
-    )
-    head += imports(body)
+    head = f"{MARKER} from the CloudFormation registry schemas. Do not edit.\n"
+    head += "# fmt: off\n# ruff: noqa\n"  # generated code: formatters and linters leave it alone
+    if stamp:
+        head += f"# Schema snapshot: {stamp}\n"
+    head += f'"""{title} resources."""\n\n' + imports(body)
     return head + "\n\n" + body + "\n"
 
 
-def ensure_schemas(path: Path) -> Path:
-    """Return `path`, downloading the schema zip there first if it is missing."""
-    if not path.exists():
+def ensure_schemas(path: Path, refresh: bool = False) -> Path:
+    """Return `path`, downloading the schema zip there first if it is missing (or `refresh`)."""
+    if refresh or not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
         print(f"downloading {SCHEMA_URL}")
-        urllib.request.urlretrieve(SCHEMA_URL, path)
+        partial = path.with_name(path.name + ".part")  # a failed download must not clobber a good cache
+        try:
+            urllib.request.urlretrieve(SCHEMA_URL, partial)
+            os.replace(partial, path)
+        except BaseException:
+            partial.unlink(missing_ok=True)
+            raise
     return path
+
+
+def schema_stamp(zip_path: Path) -> str:
+    """`sha256:<12 hex>` of the schema zip: which AWS snapshot generated code came from."""
+    return "sha256:" + hashlib.sha256(zip_path.read_bytes()).hexdigest()[:12]
 
 
 def load_schemas(zip_path: Path) -> list[Schema]:
@@ -288,7 +300,7 @@ def select(schemas: list[Schema], patterns: list[str]) -> list[Schema]:
     return [s for s in schemas if any(fnmatch.fnmatchcase(s["typeName"].lower(), p) for p in wanted)]
 
 
-def write(out: Path, schemas: list[Schema], docs: bool = True) -> None:
+def write(out: Path, schemas: list[Schema], docs: bool = True, stamp: str | None = None) -> None:
     groups: dict[str, list[Schema]] = defaultdict(list)
     for schema in schemas:
         parts = schema["typeName"].split("::")
@@ -304,7 +316,7 @@ def write(out: Path, schemas: list[Schema], docs: bool = True) -> None:
     (out / "__init__.py").write_text(f'{MARKER}.\n"""Generated CloudFormation resource modules, one per service."""\n')
     for svc, items in sorted(groups.items()):
         title = "::".join(items[0]["typeName"].split("::")[:2])
-        (out / f"{svc}.py").write_text(render_module(title, items, docs))
+        (out / f"{svc}.py").write_text(render_module(title, items, docs, stamp))
     print(f"wrote {sum(map(len, groups.values()))} resources in {len(groups)} modules to {out}")
 
 
@@ -338,9 +350,10 @@ def search_main(argv: list[str]) -> None:
     ap.add_argument("terms", nargs="+", help="words that must all match, e.g. load balancer")
     ap.add_argument("--limit", type=int, default=20, help="most results to show (default 20)")
     ap.add_argument("--schemas", type=Path, default=CACHE, help="CloudformationSchema.zip (downloaded if missing)")
+    ap.add_argument("--refresh", action="store_true", help="download the schemas again, picking up new AWS resources")
     args = ap.parse_args(argv)
 
-    found = search(load_schemas(ensure_schemas(args.schemas)), args.terms)
+    found = search(load_schemas(ensure_schemas(args.schemas, args.refresh)), args.terms)
     shown = found[: args.limit]
     width = max((len(s["typeName"]) for s in shown), default=0)
     columns = shutil.get_terminal_size((100, 24)).columns
@@ -367,13 +380,15 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--all", action="store_true", help="emit every resource type")
     ap.add_argument("--no-docs", action="store_true", help="leave the description docstrings out (much smaller output)")
     ap.add_argument("--schemas", type=Path, default=CACHE, help="CloudformationSchema.zip (downloaded if missing)")
+    ap.add_argument("--refresh", action="store_true", help="download the schemas again, picking up new AWS resources")
     args = ap.parse_args(argv)
 
     patterns = args.types + [t for path in args.template for t in template_types(path)]
     if not patterns and not args.all:
         ap.error("name resource types, pass --template, or use --all")
-    schemas = load_schemas(ensure_schemas(args.schemas))
-    write(args.out, schemas if args.all else select(schemas, patterns), docs=not args.no_docs)
+    zip_path = ensure_schemas(args.schemas, args.refresh)
+    schemas = load_schemas(zip_path)
+    write(args.out, schemas if args.all else select(schemas, patterns), docs=not args.no_docs, stamp=schema_stamp(zip_path))
 
 
 if __name__ == "__main__":

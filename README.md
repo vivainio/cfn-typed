@@ -48,7 +48,8 @@ cfn-typegen search load balancer                       # find a type name
 ```
 
 Type names are case-insensitive globs and an unmatched name is an error. The
-schema zip is downloaded once into `~/.cache/cfn-typegen/`; `--schemas` points at a local copy.
+schema zip is downloaded once into `~/.cache/cfn-typegen/`; `--schemas` points at a local copy,
+and `--refresh` downloads it again to pick up new AWS resources. Then rerun your generate command.
 Rerunning replaces earlier generated files in the output directory.
 
 ## Layout of the generated modules

@@ -59,11 +59,11 @@ solution working.
 Every account and region has to be *bootstrapped* first: a stack of roles and buckets that exist so
 you can deploy a template that might have been forty lines.
 
-## What the CDK is good at
+## In fairness
 
-Honesty, briefly: I love the idea of the CDK. I just hate how it was implemented. If you want high-level constructs, bundled assets, a large ecosystem and bindings in
-several languages, the CDK has them. Because you got a sudden urge to use the Java SDK to generate those 6
-lines of JSON.
+I love the idea of the CDK. I just hate how it was implemented. If you want high-level constructs,
+bundled assets, a large ecosystem and bindings in several languages, the CDK has them. Because you got
+a sudden urge to use the Java SDK to generate those 6 lines of JSON.
 
 A [more balanced take](comparison.md).
 

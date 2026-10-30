@@ -185,6 +185,26 @@ least one constrained property, and many common ones (an S3 bucket name, a Dynam
 mode) have none. It is also sometimes stricter than CloudFormation; see `unconstrained` on
 [the generator page](generator.md#configuration-file).
 
+## More checks on the finished template
+
+```python
+from cfn_typed.testing import assert_attributes_exist, assert_nothing_unused, assert_within_limits
+
+def test_orders_checks() -> None:
+    template = build("prod")
+    assert_attributes_exist(template, acme_cfn)   # GetAtt names an attribute the type has
+    assert_within_limits(template)                # 500 resources, 200 parameters, logical ID names, size
+    assert_nothing_unused(template)               # no idle parameter, condition or mapping
+```
+
+To run all of them at once, `assert_template_ok(template, acme_cfn)` calls every check and lists each problem under
+the check that found it (`[references]`, `[unused]`, `[limits]`, `[constraints]`, `[attributes]`); leave out `types`
+to skip the two schema checks, or pass `unused=False`. `find_all_problems` returns the same as a dict.
+
+`assert_attributes_exist` reads the `ATTRIBUTES` table that `cfn-typegen` writes next to `CONSTRAINTS`
+(read-only and identifier properties, `Outer.Inner` for nested ones). `assert_references_resolve` also fails when a
+resource without a `Condition` refers to one that has it, unless an `Fn::If` or an `Fn::And` condition guards the reference.
+
 ## What it does and does not check
 
 A golden file proves the code renders what you committed. It does not prove that CloudFormation

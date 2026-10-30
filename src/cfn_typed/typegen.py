@@ -355,6 +355,12 @@ def readonly_props(schema: Schema) -> frozenset[str]:
     return frozenset(p.split("/")[2] for p in schema.get("readOnlyProperties", []) if p.count("/") == 2)
 
 
+def attribute_names(schema: Schema) -> list[str]:
+    """What `Fn::GetAtt` may ask this resource for: its read-only and identifier properties, as `Outer.Inner` for nested ones."""
+    paths = [*schema.get("readOnlyProperties", []), *schema.get("primaryIdentifier", [])]
+    return sorted({".".join(p.split("/")[2:]) for p in paths if "*" not in p.split("/")})
+
+
 # Names the generated modules import. Reserved so a schema definition can't shadow them.
 IMPORTS = {
     "collections.abc": ["Mapping", "Sequence"],
@@ -378,6 +384,7 @@ def imports(body: str) -> str:
 def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: str | None = None, overrides: Overrides | None = None, constraints: bool = True, literal_enums: bool = False) -> str:
     mod = Module()
     table: dict[str, Schema] = {}
+    attributes: dict[str, list[str]] = {}
     plans = []
     for s in sorted(schemas, key=lambda s: s["typeName"]):
         res = pascal("".join(s["typeName"].split("::")[2:]))
@@ -387,6 +394,7 @@ def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: s
         gen = ResourceGen(mod, schema, res, docs, literal_enums)
         ov = overrides or Overrides.of()
         if constraints:
+            attributes[type_name] = attribute_names(schema)
             top = (gen.constraints(schema) or {}).get("props", {})
             top = {k: v for k, v in top.items() if k not in ov.unconstrained.get(type_name, ())}
             if top:
@@ -413,6 +421,7 @@ def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: s
         ]))
     if constraints:
         mod.blocks.append(constraint_source(table))
+        mod.blocks.append(f"ATTRIBUTES:dict[str,Any]={dump(attributes)}")
     body = "\n\n\n".join(mod.blocks)
     head = f"{MARKER} from the CloudFormation registry schemas. Do not edit.\n"
     head += "# fmt: off\n# ruff: noqa\n"  # generated code: formatters and linters leave it alone
@@ -555,7 +564,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--template", type=Path, action="append", default=[], help="JSON template; emit the types it uses")
     ap.add_argument("--all", action="store_true", help="emit every resource type")
     ap.add_argument("--no-docs", action="store_true", help="leave the description docstrings out (much smaller output)")
-    ap.add_argument("--no-constraints", action="store_true", help="leave out the CONSTRAINTS tables that assert_constraints_hold checks (smaller output)")
+    ap.add_argument("--no-constraints", action="store_true", help="leave out the CONSTRAINTS and ATTRIBUTES tables that assert_constraints_hold and assert_attributes_exist check (smaller output)")
     ap.add_argument("--literal-enums", action="store_true", help="type properties that have a fixed set of values as Literal[...]; AWS adding a value is a type error until you regenerate")
     ap.add_argument("--schemas", type=Path, default=CACHE, help="CloudformationSchema.zip (downloaded if missing)")
     ap.add_argument("--refresh", action="store_true", help="download the schemas again, picking up new AWS resources")

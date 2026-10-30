@@ -7,8 +7,13 @@ the finished template instead, which also covers fragments that were `combine`d 
 
 Checked: `Ref`, `Fn::GetAtt`, `${Name}` and `${Name.Attr}` in `Fn::Sub`, `DependsOn`, `Condition` (on a resource or
 an output, and `{"Condition": ...}` inside a condition), the condition name of `Fn::If`, and the map name of
-`Fn::FindInMap`. Pseudo parameters (`AWS::Region`, ...) always resolve. Not checked: that a `GetAtt` attribute exists
-on its resource type.
+`Fn::FindInMap`. Pseudo parameters (`AWS::Region`, ...) always resolve. A resource that has a `Condition` may be absent, so
+a `Ref`, `GetAtt` or `Sub` to it is a problem unless the referrer has the same condition (or an `Fn::And` of it), or sits
+in the `Fn::If` branch that condition guards. `DependsOn` is not held to that.
+
+`find_unused_problems` is the other direction: parameters, conditions and mappings nothing refers to.
+
+Not checked here: that a `GetAtt` attribute exists on its resource type (see `cfn_typed.attributes`).
 """
 
 import difflib
@@ -32,6 +37,27 @@ class _Walker:
         self.mappings: set[str] = set(template.get("Mappings", {}))
         self.problems: list[str] = []
         self.uses: set[str] = set()  # resources referred to inside the part being walked
+        self.cond_of = {n: r.get("Condition") for n, r in template.get("Resources", {}).items() if isinstance(r, Mapping)}
+        self.defs: Mapping[str, Any] = template.get("Conditions", {})
+        self.owner: object = None  # the Condition of the resource or output being walked
+        self.active: list[object] = []  # conditions of the Fn::If branches around the node being walked
+        self.used_parameters: set[str] = set()
+        self.used_conditions: set[str] = set()
+        self.used_mappings: set[str] = set()
+
+    def _implies(self, cond: object, target: str, depth: int = 0) -> bool:
+        if cond == target:
+            return True
+        body = self.defs.get(cond) if isinstance(cond, str) else None
+        if depth > 8 or not (isinstance(body, Mapping) and isinstance(body.get("Fn::And"), list)):
+            return False
+        return any(isinstance(p, Mapping) and self._implies(p.get("Condition"), target, depth + 1) for p in body["Fn::And"])
+
+    def _present(self, name: str, path: str, what: str) -> None:
+        """`name` may be absent when its Condition is false, so whatever refers to it must be guarded by the same one."""
+        cond = self.cond_of.get(name)
+        if isinstance(cond, str) and not any(self._implies(c, cond) for c in (self.owner, *self.active)):
+            self.problems.append(f"{path}: {what} refers to {name!r}, which only exists when condition {cond!r} holds, and this is not guarded by it")
 
     def _value(self, name: object, path: str, what: str) -> None:
         """A `Ref` or `${Name}`: a resource, a parameter or a pseudo parameter."""
@@ -39,7 +65,10 @@ class _Walker:
             return
         if name in self.resources:
             self.uses.add(name)
-        elif name not in self.parameters:
+            self._present(name, path, what)
+        elif name in self.parameters:
+            self.used_parameters.add(name)
+        else:
             known = self.resources | self.parameters
             self.problems.append(f"{path}: {what} refers to {name!r}, which is not a resource or parameter{_suggest(name, known)}")
 
@@ -48,10 +77,14 @@ class _Walker:
             return
         if name in self.resources:
             self.uses.add(name)
+            if what != "DependsOn":
+                self._present(name, path, what)
         else:
             self.problems.append(f"{path}: {what} refers to {name!r}, which is not a resource{_suggest(name, self.resources)}")
 
     def _condition(self, name: object, path: str, what: str) -> None:
+        if isinstance(name, str):
+            self.used_conditions.add(name)
         if isinstance(name, str) and name not in self.conditions:
             self.problems.append(f"{path}: {what} refers to {name!r}, which is not a condition{_suggest(name, self.conditions)}")
 
@@ -83,7 +116,14 @@ class _Walker:
                 self._sub(value, path)
             elif key == "Fn::If" and isinstance(value, list) and value:
                 self._condition(value[0], path, "Fn::If")
+                for i, branch in enumerate(value[1:], 1):
+                    self.active += [value[0]] if i == 1 else []  # only the true branch is guarded by the condition
+                    self.walk(branch, f"{path}.Fn::If[{i}]")
+                    self.active = self.active[:len(self.active) - (i == 1)]
+                return
             elif key == "Fn::FindInMap" and isinstance(value, list) and value:
+                if isinstance(value[0], str):
+                    self.used_mappings.add(value[0])
                 if isinstance(value[0], str) and value[0] not in self.mappings:
                     self.problems.append(f"{path}: Fn::FindInMap refers to {value[0]!r}, which is not a mapping{_suggest(value[0], self.mappings)}")
             elif key == "Condition" and isinstance(value, str):  # a policy statement's Condition is a dict, never a string
@@ -118,13 +158,13 @@ def _cycle(graph: Mapping[str, set[str]]) -> list[str] | None:
     return None
 
 
-def find_reference_problems(template: Mapping[str, Any]) -> list[str]:
-    """Every dangling reference and every dependency cycle in `template`, one readable line each."""
+def _run(template: Mapping[str, Any]) -> _Walker:
     w = _Walker(template)
     graph: dict[str, set[str]] = {}
     for logical, resource in template.get("Resources", {}).items():
         path = f"Resources.{logical}"
         w.uses = set()
+        w.owner = resource.get("Condition")
         w.walk({k: v for k, v in resource.items() if k not in ("DependsOn", "Condition")}, path)
         depends = resource.get("DependsOn", [])
         for dep in [depends] if isinstance(depends, str) else depends:
@@ -135,10 +175,41 @@ def find_reference_problems(template: Mapping[str, Any]) -> list[str]:
     for section in ("Conditions", "Outputs"):
         for name, body in template.get(section, {}).items():
             path = f"{section}.{name}"
+            w.owner = body.get("Condition") if section == "Outputs" else None
             w.walk({k: v for k, v in body.items() if k != "Condition"} if section == "Outputs" else body, path)
             if section == "Outputs" and "Condition" in body:
                 w._condition(body["Condition"], f"{path}.Condition", "Condition")
     cycle = _cycle(graph)
     if cycle:
         w.problems.append(f"Resources: circular dependency {' -> '.join(cycle)}")
-    return w.problems
+    return w
+
+
+def find_reference_problems(template: Mapping[str, Any]) -> list[str]:
+    """Every dangling reference, unguarded reference to a conditional resource and dependency cycle in `template`, one readable line each."""
+    return _run(template).problems
+
+
+def _refs(node: Any, out: set[str]) -> None:
+    if isinstance(node, list):
+        for item in node:
+            _refs(item, out)
+    elif isinstance(node, Mapping):
+        if isinstance(node.get("Ref"), str):
+            out.add(node["Ref"])
+        for value in node.values():
+            _refs(value, out)
+
+
+def find_unused_problems(template: Mapping[str, Any]) -> list[str]:
+    """Every parameter, condition and mapping nothing refers to, one readable line each.
+
+    A parameter also counts as used when a `Rules` entry refers to it. Metadata such as the console's parameter groups does not.
+    """
+    w = _run(template)
+    in_rules: set[str] = set()
+    _refs(template.get("Rules", {}), in_rules)
+    problems = []
+    for section, used in (("Parameters", w.used_parameters | in_rules), ("Conditions", w.used_conditions), ("Mappings", w.used_mappings)):
+        problems += [f"{section}.{name}: never used" for name in template.get(section, {}) if name not in used]
+    return problems

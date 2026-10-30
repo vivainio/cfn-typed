@@ -15,8 +15,11 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+from cfn_typed.attributes import find_attribute_problems
+from cfn_typed.checks import find_all_problems
 from cfn_typed.constraints import find_constraint_problems
-from cfn_typed.references import find_reference_problems
+from cfn_typed.limits import find_limit_problems
+from cfn_typed.references import find_reference_problems, find_unused_problems
 from cfn_typed.render import to_json, to_yaml
 
 UPDATE_ENV = "CFN_TYPED_UPDATE"
@@ -73,3 +76,40 @@ def assert_constraints_hold(template: Mapping[str, Any], types: ModuleType | Map
     problems = find_constraint_problems(template, types, defaults=defaults)
     if problems:
         raise AssertionError("the template has values outside the schema's constraints:\n" + "\n".join(f"  {p}" for p in problems))
+
+
+def assert_attributes_exist(template: Mapping[str, Any], types: ModuleType | Mapping[str, Any]) -> None:
+    """Fail if an `Fn::GetAtt` asks a resource for an attribute its type does not have.
+
+    `types` is the package `cfn-typegen` generated. CloudFormation reports this only at deploy time. See `cfn_typed.attributes`.
+    """
+    problems = find_attribute_problems(template, types)
+    if problems:
+        raise AssertionError("the template asks for attributes that do not exist:\n" + "\n".join(f"  {p}" for p in problems))
+
+
+def assert_within_limits(template: Mapping[str, Any], *, inline: bool = False) -> None:
+    """Fail if the template breaks a CloudFormation quota or naming rule. See `cfn_typed.limits`."""
+    problems = find_limit_problems(template, inline=inline)
+    if problems:
+        raise AssertionError("the template is outside CloudFormation's limits:\n" + "\n".join(f"  {p}" for p in problems))
+
+
+def assert_nothing_unused(template: Mapping[str, Any]) -> None:
+    """Fail if a parameter, condition or mapping is never referred to. See `cfn_typed.references.find_unused_problems`."""
+    problems = find_unused_problems(template)
+    if problems:
+        raise AssertionError("the template has unused definitions:\n" + "\n".join(f"  {p}" for p in problems))
+
+
+def assert_template_ok(
+    template: Mapping[str, Any], types: ModuleType | None = None, *, inline: bool = False, unused: bool = True, defaults: bool = True
+) -> None:
+    """Fail if any check finds a problem: references, unused definitions, limits and, given `types`, constraints and attributes.
+
+    The one call to put in a test. Each problem is listed under the check that found it. See `cfn_typed.checks`.
+    """
+    found = find_all_problems(template, types, inline=inline, unused=unused, defaults=defaults)
+    if found:
+        lines = [f"  [{check}] {p}" for check, problems in found.items() for p in problems]
+        raise AssertionError("the template has problems:\n" + "\n".join(lines))

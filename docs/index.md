@@ -18,6 +18,8 @@ before CloudFormation sees the template.
   <figcaption>Where plain CloudFormation sits on the curve, now with types.</figcaption>
 </figure>
 
+[CDK is a ghetto](cdk-is-a-ghetto.md)
+
 ```python
 from cfn_types import lambda_
 

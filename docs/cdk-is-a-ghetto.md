@@ -22,7 +22,8 @@ started with a heap limit of 4.069 GB (`--max-old-space-size=4069`), because Nod
 call a TypeScript library from Python.
 
 The wheel is 59 MB and installs as 219 MB. It's Node.js and 2000 npm deps in a
-trenchcoat.
+trenchcoat. Now you can add tests with Jest! That is just another 3000 dependencies, to check for odd
+and even numbers.
 
 Here it is Python, and the output is `json.dumps`.
 

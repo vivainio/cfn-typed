@@ -49,6 +49,8 @@ CloudFormation stacks are your crown jewels. They decide how well production beh
 hand that to a 24 year old barista with a college AWS account, and a third-party construct is exactly
 that: IAM, networking and removal policies decided by code you did not write and will not read, pulled
 in with one `npm install`.
+In practice you skip even that: you copy a bunch of .ts files from an adjacent team that got a semi-neat
+solution working.
 
 ## Before the first deploy, you deploy a stack
 

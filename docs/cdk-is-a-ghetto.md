@@ -30,7 +30,8 @@ You refactor by moving one line. You tidy the database into a nicer parent const
 destroys your database to start a new one. You may have lost all your customers, but you get a cleaner
 TypeScript file.
 
-The escape hatch is to dig the old logical ID out of the deployed template and paste it back in by hand.
+The fix is open heart surgery with the `cdk refactor` command, in a terminal with production AWS access
+that operations personnel have to log into for you.
 
 Here a logical ID is a key in a dict. It moves only when you move it.
 

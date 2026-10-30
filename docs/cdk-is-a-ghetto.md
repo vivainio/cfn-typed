@@ -42,16 +42,6 @@ account, where you find out what the template says by running it.
 
 Synthesizing the stack takes 200 ms, as opposed to a 5 minute deploy where you hope for the best.
 
-## Your template is the output of a program
-
-The thing you review is not the thing that deploys. When the two disagree, you debug the program by
-reading its output, which nobody wrote and few people read.
-
-## The same code can mean different permissions
-
-Two apps can run identical code and get different IAM, depending on a feature flag. "What can this role
-do?" is a question you answer by deploying it.
-
 ## You can't trust the ecosystem
 
 The big selling point is the ecosystem: a construct for everything, published by someone. But your

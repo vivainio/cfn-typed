@@ -14,7 +14,7 @@ rest of this book:
 ```python
 lambda_role("order-processor-prod", [
     *grants.Sqs.Queue.consume_messages.on(cfn.get_att("OrderQueue", "Arn")),
-    *grants.DynamoDb.Table.write_data.on(cfn.arn("dynamodb", "table/orders-prod")),
+    *grants.DynamoDb.Table.write_data.on(cfn.arn.table("orders-prod")),
 ])
 ```
 
@@ -32,7 +32,7 @@ cfn.allow([Sqs.ReceiveMessage, Sqs.DeleteMessage], [cfn.get_att("OrderQueue", "A
   pattern, rather than in every caller.
 - **`allow` and `Statement` come from `cfn_typed`.** `Effect` is limited to
   `"Allow"` or `"Deny"`, and `Resource` accepts a literal or an intrinsic.
-- **`arn()` builds a `Fn::Sub`** with the partition, region and account filled in
+- **`arn()` and its methods, like `arn.table(...)`, build a `Fn::Sub`** with the partition, region and account filled in
   by CloudFormation, so the same code works in every partition.
 - **The log group wildcard is scoped to the function prefix**, not `*`. Least
   privilege is cheaper to write once in a pattern than to remember in every stack.

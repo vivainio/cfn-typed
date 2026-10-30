@@ -37,7 +37,7 @@ Each returns a plain dict, typed as `Expr[T]` so it is accepted wherever a liter
 | `find_in_map`, `get_azs` | `Fn::FindInMap`, `Fn::GetAZs` |
 | `if_`, `equals`, `and_`, `or_`, `not_` | `Fn::If` and the condition functions |
 | `ConditionFn`, `condition_ref` | the type of a condition function, and `{"Condition": ...}` |
-| `arn` | an `Fn::Sub` ARN with the partition, region and account filled in |
+| `arn` | an `Fn::Sub` ARN with the partition, region and account filled in; `arn.bucket(...)`, `arn.function(...)` and more build common kinds |
 
 ## Policy documents
 

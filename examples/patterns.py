@@ -15,7 +15,7 @@ from cfn_typed.policy import service
 # --8<-- [start:lambda_role]
 def lambda_role(name_prefix: str, extra: Sequence[AnyStatement]) -> iam.Role:
     """Execution role for a Lambda: log permissions plus the `extra` statements."""
-    log_arn = arn("logs", f"log-group:/aws/lambda/{name_prefix}*:*")
+    log_arn = arn.log_group(f"/aws/lambda/{name_prefix}*", streams=True)
     return iam.role(
         AssumeRolePolicyDocument=assume_role_policy(service("lambda.amazonaws.com")),
         Policies=[iam.RolePolicy(

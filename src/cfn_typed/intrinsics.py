@@ -136,16 +136,81 @@ def condition_ref(name: str) -> ConditionRef:
 _S3_REGIONAL = ("accesspoint/", "job/", "storage-lens/")
 
 
-def arn(service: str, resource: str, *, region: bool | None = None, account: bool | None = None) -> Sub:
-    """The ARN of a resource in this partition, region and account, through `Fn::Sub` pseudo parameters.
+class _Arn:
+    """Builds ARNs in this partition, region and account through `Fn::Sub` pseudo parameters.
 
-    Not every ARN has a region and an account, and the defaults know the two common exceptions, as awacs does
-    (https://github.com/cloudtools/awacs): IAM ARNs have no region, and S3 bucket and object ARNs have neither.
-    For any other global service pass `region=False` or `account=False`.
+    Call it for any service, or use the method for a resource kind whose format is easy to get wrong:
+
+        arn("dynamodb", "table/orders")   # arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/orders
+        arn.bucket("data")                 # arn:${AWS::Partition}:s3:::data
+        arn.function("handler")            # arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:handler
+
+    Names may contain `${...}` substitutions, as in any `Fn::Sub`.
     """
-    s3_plain = service == "s3" and not resource.startswith(_S3_REGIONAL)
-    if region is None:
-        region = not (service == "iam" or s3_plain)
-    if account is None:
-        account = not s3_plain
-    return sub(f"arn:${{AWS::Partition}}:{service}:{'${AWS::Region}' if region else ''}:{'${AWS::AccountId}' if account else ''}:{resource}")
+
+    def __call__(self, service: str, resource: str, *, region: bool | str | None = None, account: bool | str | None = None) -> Sub:
+        """The ARN of `resource` in `service`.
+
+        Not every ARN has a region and an account, and the defaults know the two common exceptions, as awacs does
+        (https://github.com/cloudtools/awacs): IAM ARNs have no region, and S3 bucket and object ARNs have neither.
+        For any other global service pass `region=False` or `account=False`; pass a string to name another region or
+        account, for example `account="111111111111"`.
+        """
+        s3_plain = service == "s3" and not resource.startswith(_S3_REGIONAL)
+        if region is None:
+            region = not (service == "iam" or s3_plain)
+        if account is None:
+            account = not s3_plain
+        region_part = region if isinstance(region, str) else "${AWS::Region}" if region else ""
+        account_part = account if isinstance(account, str) else "${AWS::AccountId}" if account else ""
+        return sub(f"arn:${{AWS::Partition}}:{service}:{region_part}:{account_part}:{resource}")
+
+    def bucket(self, name: str) -> Sub:
+        return self("s3", name)
+
+    def object(self, bucket: str, key: str = "*") -> Sub:
+        """Objects in a bucket; every object by default."""
+        return self("s3", f"{bucket}/{key}")
+
+    def function(self, name: str, qualifier: str | None = None) -> Sub:
+        """A Lambda function, optionally a version or alias."""
+        return self("lambda", f"function:{name}" + (f":{qualifier}" if qualifier else ""))
+
+    def table(self, name: str) -> Sub:
+        return self("dynamodb", f"table/{name}")
+
+    def table_index(self, table: str, index: str) -> Sub:
+        return self("dynamodb", f"table/{table}/index/{index}")
+
+    def queue(self, name: str) -> Sub:
+        return self("sqs", name)
+
+    def topic(self, name: str) -> Sub:
+        return self("sns", name)
+
+    def role(self, name: str, path: str = "/") -> Sub:
+        """An IAM role; `path` is `/` unless the role was created under another."""
+        return self("iam", f"role{path.rstrip('/')}/{name}")
+
+    def policy(self, name: str, path: str = "/") -> Sub:
+        """A customer managed IAM policy."""
+        return self("iam", f"policy{path.rstrip('/')}/{name}")
+
+    def secret(self, name: str) -> Sub:
+        """A Secrets Manager secret. Real secret ARNs end in a random suffix, so end `name` with `-*` to match it."""
+        return self("secretsmanager", f"secret:{name}")
+
+    def parameter(self, name: str) -> Sub:
+        """An SSM parameter; the leading slash of `name` is dropped, as the ARN has none."""
+        return self("ssm", f"parameter/{name.lstrip('/')}")
+
+    def log_group(self, name: str, streams: bool = False) -> Sub:
+        """A CloudWatch Logs log group, or with `streams` the log streams inside it."""
+        return self("logs", f"log-group:{name}" + (":*" if streams else ""))
+
+    def key(self, key_id: str) -> Sub:
+        """A KMS key."""
+        return self("kms", f"key/{key_id}")
+
+
+arn = _Arn()

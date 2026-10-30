@@ -29,7 +29,7 @@ and you never have to wrap one. Pseudo parameters are plain refs: `ref("AWS::Reg
 | `base64(value)` | `Fn::Base64` | encode a string, for example EC2 user data |
 | `cidr(block, count, bits)` | `Fn::Cidr` | carve subnets out of a block |
 | `import_value(name)` | `Fn::ImportValue` | a value exported by another stack |
-| `arn(service, resource)` | `Fn::Sub` | an ARN built from the partition, region and account; see [policy statements](policy.md#arns) |
+| `arn(service, resource)` | `Fn::Sub` | an ARN built from the partition, region and account, with `arn.bucket(...)`, `arn.function(...)` and more; see [policy statements](policy.md#arns) |
 
 `if_` is how a property is left out: `if_("IsProd", 5, ref("AWS::NoValue"))` sets it in production and omits it elsewhere.
 

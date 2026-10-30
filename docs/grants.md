@@ -56,7 +56,7 @@ By default the statements have **no `Principal`**: they are identity-policy stat
 ```python
 stmts = [
     *grants.Sqs.Queue.consume_messages.on(get_att("OrderQueue", "Arn")),
-    *grants.DynamoDb.Table.write_data.on(arn("dynamodb", "table/orders")),
+    *grants.DynamoDb.Table.write_data.on(arn.table("orders")),
 ]
 
 lambda_role("orders-prod", stmts)                            # inline on a role (the pattern in this book)

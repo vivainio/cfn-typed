@@ -20,7 +20,7 @@ resources = cfn.combine(
     {
         "ExecutionRole": lambda_role(f"{service}-{stage}", [
             *grants.Sqs.Queue.consume_messages.on(orders.queue_arn),
-            *grants.DynamoDb.Table.write_data.on(cfn.arn("dynamodb", f"table/orders-{stage}")),
+            *grants.DynamoDb.Table.write_data.on(cfn.arn.table(f"orders-{stage}")),
         ]),
         "Processor": lambda_.function(
             FunctionName=f"{service}-{stage}-processor",

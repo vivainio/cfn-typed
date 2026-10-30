@@ -142,10 +142,27 @@ arn("s3", "my-bucket/*")          # arn:${AWS::Partition}:s3:::my-bucket/*
 arn("iam", "role/deployer")       # arn:${AWS::Partition}:iam::${AWS::AccountId}:role/deployer
 ```
 
+For the resource kinds whose format is easy to get wrong, `arn` has a method each. Names may contain `${...}`
+substitutions, as in any `Fn::Sub`:
+
+| Method | Resource |
+|---|---|
+| `arn.bucket(name)`, `arn.object(bucket, key="*")` | S3 bucket, and objects in it |
+| `arn.function(name, qualifier=None)` | Lambda function, version or alias |
+| `arn.table(name)`, `arn.table_index(table, index)` | DynamoDB table and index |
+| `arn.queue(name)`, `arn.topic(name)` | SQS queue, SNS topic |
+| `arn.role(name, path="/")`, `arn.policy(name, path="/")` | IAM role and customer managed policy |
+| `arn.secret(name)` | Secrets Manager secret; end `name` with `-*`, as real ARNs carry a random suffix |
+| `arn.parameter(name)` | SSM parameter; the leading slash is dropped |
+| `arn.log_group(name, streams=False)` | CloudWatch Logs log group, or the streams in it |
+| `arn.key(key_id)` | KMS key |
+
+Anything else goes through `arn(service, resource)`.
+
 Not every ARN has a region and an account. The defaults know the two common exceptions, the way
 [awacs](https://github.com/cloudtools/awacs) does: IAM ARNs have no region, and S3 bucket and object ARNs have neither
 (S3 access points, jobs and Storage Lens ARNs have both). For any other global service pass `region=False` or
-`account=False`.
+`account=False`. To name another region or account, pass a string: `arn("sns", "t", account="111111111111")`.
 
 ## Guardrails
 

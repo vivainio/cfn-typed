@@ -110,3 +110,23 @@ def test_yaml_for_the_example_uses_short_forms() -> None:
     text = cfn.to_yaml(build())
     assert "Type: AWS::SSM::Parameter::Value<List<String>>" in text
     assert "Subnets: !Ref PrivateSubnets" in text
+
+
+def test_string_and_ssm_parameters_take_an_aws_specific_type() -> None:
+    params = cfn.Params()
+    params.string("Ami", type="AWS::EC2::Image::Id", default="ami-123")
+    params.ssm("LatestAmi", "/aws/service/ami", type="AWS::EC2::Image::Id")
+    decls = params.declarations()
+    assert decls["Ami"] == {"Type": "AWS::EC2::Image::Id", "Default": "ami-123"}
+    assert decls["LatestAmi"]["Type"] == "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
+
+
+def test_list_parameters_take_an_element_type() -> None:
+    params = cfn.Params()
+    assert params.list_of("Cidrs", default=["10.0.0.0/8", "172.16.0.0/12"])["Ref"] == "Cidrs"
+    params.list_of("Subnets", type="AWS::EC2::Subnet::Id")
+    params.ssm_list("SsmSubnets", "/net/subnets", type="AWS::EC2::Subnet::Id")
+    decls = params.declarations()
+    assert decls["Cidrs"] == {"Type": "CommaDelimitedList", "Default": "10.0.0.0/8,172.16.0.0/12"}
+    assert decls["Subnets"] == {"Type": "List<AWS::EC2::Subnet::Id>"}
+    assert decls["SsmSubnets"]["Type"] == "AWS::SSM::Parameter::Value<List<AWS::EC2::Subnet::Id>>"

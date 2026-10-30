@@ -36,6 +36,7 @@ class Params:
         self,
         name: str,
         *,
+        type: str = "String",
         default: str | None = None,
         description: str | None = None,
         allowed_values: list[str] | None = None,
@@ -45,7 +46,9 @@ class Params:
         constraint_description: str | None = None,
         no_echo: bool = False,
     ) -> Ref:
-        decl: Parameter = {"Type": "String"}
+        """A string parameter. `type` is any string-valued CloudFormation parameter type, such as
+        `AWS::EC2::Image::Id` or `AWS::EC2::VPC::Id`, which the console and deploy then validate."""
+        decl: Parameter = {"Type": type}
         if default is not None:
             decl["Default"] = default
         if description:
@@ -87,13 +90,42 @@ class Params:
             decl["ConstraintDescription"] = constraint_description
         return self._declare(name, decl)
 
-    def ssm(self, name: str, path: str, *, description: str | None = None) -> Ref:
-        """A String (or String-typed SecureString-free) SSM parameter, resolved by CloudFormation at deploy time."""
-        return self._declare(name, self._ssm_decl("AWS::SSM::Parameter::Value<String>", path, description))
+    def list_of(
+        self,
+        name: str,
+        *,
+        type: str = "String",
+        default: list[str] | None = None,
+        description: str | None = None,
+        allowed_values: list[str] | None = None,
+        constraint_description: str | None = None,
+    ) -> Ref:
+        """A list parameter, passed as a comma-separated string. The `Ref` is accepted wherever a list is.
 
-    def ssm_list(self, name: str, path: str, *, description: str | None = None) -> Ref:
-        """An SSM StringList parameter. The `Ref` is accepted wherever a list of strings is."""
-        return self._declare(name, self._ssm_decl("AWS::SSM::Parameter::Value<List<String>>", path, description))
+        `type` is the element type: `String` gives `CommaDelimitedList`, anything else `List<type>`,
+        e.g. `AWS::EC2::Subnet::Id` or `Number`.
+        """
+        decl: Parameter = {"Type": "CommaDelimitedList" if type == "String" else f"List<{type}>"}
+        if default is not None:
+            decl["Default"] = ",".join(default)
+        if description:
+            decl["Description"] = description
+        if allowed_values:
+            decl["AllowedValues"] = allowed_values
+        if constraint_description:
+            decl["ConstraintDescription"] = constraint_description
+        return self._declare(name, decl)
+
+    def ssm(self, name: str, path: str, *, type: str = "String", description: str | None = None) -> Ref:
+        """A String (or String-typed SecureString-free) SSM parameter, resolved by CloudFormation at deploy time.
+
+        `type` is the type of the value, e.g. `AWS::EC2::Image::Id` for an AMI id kept in SSM.
+        """
+        return self._declare(name, self._ssm_decl(f"AWS::SSM::Parameter::Value<{type}>", path, description))
+
+    def ssm_list(self, name: str, path: str, *, type: str = "String", description: str | None = None) -> Ref:
+        """An SSM StringList parameter. The `Ref` is accepted wherever a list is; `type` is the element type."""
+        return self._declare(name, self._ssm_decl(f"AWS::SSM::Parameter::Value<List<{type}>>", path, description))
 
     @staticmethod
     def _ssm_decl(type_name: str, path: str, description: str | None) -> Parameter:

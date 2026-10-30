@@ -70,7 +70,7 @@ handle satisfies `HasResources` without importing it.
 
 | Name | What it is |
 |---|---|
-| `Params` | declare a template parameter once and get back the `Ref` to use |
+| `Params` | declare a template parameter once and get back the `Ref` to use: `string`, `number`, `list_of`, `ssm`, `ssm_list`, with an optional AWS-specific `type` |
 | `dynamic_ssm` | the `{{resolve:ssm:...}}` string for a value resolved at deploy time |
 
 See [Parameters as variables](patterns/parameters.md).

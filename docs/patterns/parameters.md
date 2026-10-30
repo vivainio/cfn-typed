@@ -23,9 +23,13 @@ Misspelling the variable is a name error the editor shows immediately, and the s
 | Call | Declares |
 |---|---|
 | `params.string("Stage", default="dev", allowed_values=[...])` | a `String` parameter; also `allowed_pattern`, `min_length`, `max_length`, `constraint_description` |
+| `params.string("Ami", type="AWS::EC2::Image::Id")` | a string of an AWS-specific type, which CloudFormation validates (`AWS::EC2::VPC::Id`, `AWS::EC2::KeyPair::KeyName`, ...) |
 | `params.number("Size", default=3)` | a `Number` parameter; also `min_value`, `max_value`, `constraint_description` |
+| `params.list_of("Cidrs", default=["10.0.0.0/8"])` | a `CommaDelimitedList`; the `Ref` is accepted wherever a list is |
+| `params.list_of("Subnets", type="AWS::EC2::Subnet::Id")` | a `List<AWS::EC2::Subnet::Id>`; `type` is the element type, so `Number` gives `List<Number>` |
 | `params.ssm("VpcId", "/path")` | an SSM `String`, resolved by CloudFormation at deploy time |
-| `params.ssm_list("Subnets", "/path")` | an SSM `StringList`; the `Ref` is accepted wherever a list of strings is |
+| `params.ssm("Ami", "/path", type="AWS::EC2::Image::Id")` | an SSM value of that type, as in `AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>` |
+| `params.ssm_list("Subnets", "/path")` | an SSM `StringList`; `type=` sets the element type, as for `list_of` |
 
 SSM values are **not read when you build the template**. The template carries only the
 parameter's name in SSM, and CloudFormation looks the value up when the stack is created

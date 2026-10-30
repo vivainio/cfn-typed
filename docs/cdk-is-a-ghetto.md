@@ -8,7 +8,8 @@ You wanted a Lambda function and a queue. You got a program.
 
 ## You thought you could just use Python
 
-Open the CDK's own Python `Bucket` (`aws_cdk/aws_s3/__init__.py` in the
+"Hey, I don't need to use Node, I will just use Python." So here is your Python. Open the CDK's own
+Python `Bucket` (`aws_cdk/aws_s3/__init__.py` in the
 [`aws-cdk-lib`](https://pypi.org/project/aws-cdk-lib/) package) and the whole implementation is this:
 
 ```python

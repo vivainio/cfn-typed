@@ -14,10 +14,10 @@ import cfn_typed as cfn
 
 | Name | What it is |
 |---|---|
-| `Template` | the top-level `TypedDict`: `Resources`, `Parameters`, `Outputs`, `Conditions`, ... |
+| `Template` | the top-level `TypedDict`: `Resources`, `Parameters`, `Outputs`, `Conditions`, `Mappings`, `Metadata`, `Rules`, `Transform` |
 | `Resources` | `dict[str, AnyResource]`, the type of `Template["Resources"]` and of a pattern's fragment |
 | `AnyResource` | any generated resource dict: `Type`, optional `Properties`, `DependsOn`, `Condition`, ... |
-| `Parameter` | one entry of `Template["Parameters"]` |
+| `Parameter` | one entry of `Template["Parameters"]`, with every documented attribute (`MinLength`, `AllowedPattern`, `ConstraintDescription`, ...) |
 | `Output` | one entry of `Template["Outputs"]` |
 | `Tag` | `{"Key": ..., "Value": ...}` |
 

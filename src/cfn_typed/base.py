@@ -35,6 +35,12 @@ class Parameter(TypedDict):
     Default: NotRequired[str | int | float]
     Description: NotRequired[str]
     AllowedValues: NotRequired[list[str]]
+    AllowedPattern: NotRequired[str]
+    ConstraintDescription: NotRequired[str]
+    MinLength: NotRequired[int | str]  # CloudFormation takes "255" as well as 255, and templates in the wild use both
+    MaxLength: NotRequired[int | str]
+    MinValue: NotRequired[int | float | str]
+    MaxValue: NotRequired[int | float | str]
     NoEcho: NotRequired[bool]
 
 
@@ -58,9 +64,12 @@ class HasResources(Protocol):
 class Template(TypedDict):
     AWSTemplateFormatVersion: NotRequired[str]
     Description: NotRequired[str]
+    Metadata: NotRequired[dict[str, Any]]
     Parameters: NotRequired[dict[str, Parameter]]
+    Rules: NotRequired[dict[str, Any]]
     Mappings: NotRequired[dict[str, dict[str, Any]]]
     Conditions: NotRequired[dict[str, ConditionFn]]
+    Transform: NotRequired[str | list[str] | dict[str, Any]]
     Resources: Resources
     Outputs: NotRequired[dict[str, Output]]
 

@@ -22,8 +22,8 @@ Misspelling the variable is a name error the editor shows immediately, and the s
 
 | Call | Declares |
 |---|---|
-| `params.string("Stage", default="dev", allowed_values=[...])` | a `String` parameter |
-| `params.number("Size", default=3)` | a `Number` parameter |
+| `params.string("Stage", default="dev", allowed_values=[...])` | a `String` parameter; also `allowed_pattern`, `min_length`, `max_length`, `constraint_description` |
+| `params.number("Size", default=3)` | a `Number` parameter; also `min_value`, `max_value`, `constraint_description` |
 | `params.ssm("VpcId", "/path")` | an SSM `String`, resolved by CloudFormation at deploy time |
 | `params.ssm_list("Subnets", "/path")` | an SSM `StringList`; the `Ref` is accepted wherever a list of strings is |
 

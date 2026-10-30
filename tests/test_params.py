@@ -35,6 +35,32 @@ def test_plain_parameters() -> None:
     }
 
 
+def test_parameter_constraints() -> None:
+    params = cfn.Params()
+    params.string(
+        "Code", default="ab", min_length=2, max_length=8, allowed_pattern="[a-z]+", constraint_description="lower case",
+    )
+    params.number("Size", default=3, min_value=1, max_value=10, constraint_description="1 to 10")
+    assert params.declarations() == {
+        "Code": {
+            "Type": "String", "Default": "ab", "AllowedPattern": "[a-z]+", "MinLength": 2, "MaxLength": 8,
+            "ConstraintDescription": "lower case",
+        },
+        "Size": {"Type": "Number", "Default": 3, "MinValue": 1, "MaxValue": 10, "ConstraintDescription": "1 to 10"},
+    }
+
+
+def test_template_sections_beyond_resources() -> None:
+    template: cfn.Template = {
+        "Transform": "AWS::Serverless-2016-10-31",
+        "Metadata": {"AWS::CloudFormation::Interface": {"ParameterGroups": []}},
+        "Parameters": {"Size": {"Type": "Number", "MinValue": 1, "MaxValue": 2.5}},
+        "Rules": {"R": {"Assertions": []}},
+        "Resources": {},
+    }
+    assert list(json.loads(cfn.to_json(template))) == ["Transform", "Metadata", "Parameters", "Rules", "Resources"]
+
+
 def test_redeclaring_the_same_parameter_is_fine_but_a_conflict_is_not() -> None:
     params = cfn.Params()
     assert params.ssm("VpcId", "/a") == params.ssm("VpcId", "/a")

@@ -39,6 +39,10 @@ class Params:
         default: str | None = None,
         description: str | None = None,
         allowed_values: list[str] | None = None,
+        allowed_pattern: str | None = None,
+        min_length: int | None = None,
+        max_length: int | None = None,
+        constraint_description: str | None = None,
         no_echo: bool = False,
     ) -> Ref:
         decl: Parameter = {"Type": "String"}
@@ -48,16 +52,39 @@ class Params:
             decl["Description"] = description
         if allowed_values:
             decl["AllowedValues"] = allowed_values
+        if allowed_pattern is not None:
+            decl["AllowedPattern"] = allowed_pattern
+        if min_length is not None:
+            decl["MinLength"] = min_length
+        if max_length is not None:
+            decl["MaxLength"] = max_length
+        if constraint_description:
+            decl["ConstraintDescription"] = constraint_description
         if no_echo:
             decl["NoEcho"] = True
         return self._declare(name, decl)
 
-    def number(self, name: str, *, default: int | float | None = None, description: str | None = None) -> Ref:
+    def number(
+        self,
+        name: str,
+        *,
+        default: int | float | None = None,
+        description: str | None = None,
+        min_value: int | float | None = None,
+        max_value: int | float | None = None,
+        constraint_description: str | None = None,
+    ) -> Ref:
         decl: Parameter = {"Type": "Number"}
         if default is not None:
             decl["Default"] = default
         if description:
             decl["Description"] = description
+        if min_value is not None:
+            decl["MinValue"] = min_value
+        if max_value is not None:
+            decl["MaxValue"] = max_value
+        if constraint_description:
+            decl["ConstraintDescription"] = constraint_description
         return self._declare(name, decl)
 
     def ssm(self, name: str, path: str, *, description: str | None = None) -> Ref:

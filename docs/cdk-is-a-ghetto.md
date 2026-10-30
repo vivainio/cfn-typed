@@ -30,7 +30,7 @@ You refactor by moving one line. You tidy the database into a nicer parent const
 destroys your database to start a new one. You may have lost all your customers, but you get a cleaner
 TypeScript file.
 
-The escape hatch is to override the logical ID by hand, after you have found out.
+The escape hatch is to dig the old logical ID out of the deployed template and paste it back in by hand.
 
 Here a logical ID is a key in a dict. It moves only when you move it.
 

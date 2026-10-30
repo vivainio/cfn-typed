@@ -62,7 +62,7 @@ def test_tables_are_on_demand_with_recovery() -> None:
     both = plain(dynamodb_table("pk", "sk"))["Properties"]
     assert both["KeySchema"] == [{"AttributeName": "pk", "KeyType": "HASH"}, {"AttributeName": "sk", "KeyType": "RANGE"}]
     assert both["BillingMode"] == "PAY_PER_REQUEST" and both["PointInTimeRecoverySpecification"] == {"PointInTimeRecoveryEnabled": True}
-    one = plain(dynamodb_table("id", key_type="N", deletion_protection=False))["Properties"]
+    one = plain(dynamodb_table(("id", "N"), deletion_protection=False))["Properties"]
     assert one["KeySchema"] == [{"AttributeName": "id", "KeyType": "HASH"}]
     assert one["AttributeDefinitions"] == [{"AttributeName": "id", "AttributeType": "N"}]
     assert one["DeletionProtectionEnabled"] is False

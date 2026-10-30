@@ -3,11 +3,11 @@
 # --8<-- [start:imports]
 import re
 from collections.abc import Mapping, Sequence
-from typing import Literal
 
 from cfn_types import dynamodb, ecr, kms, s3, ssm
 
 from cfn_typed import Expr, Resources, Tag, allow, deny, get_att, join, ref, sub
+from cfn_typed.dynamodb import Index, Key, keys
 from cfn_typed.permissions import Ecr
 from cfn_typed.policy import ANY, GlobalKeys, aws, bool_, string_not_like
 
@@ -97,25 +97,22 @@ def secure_bucket(
 
 # --8<-- [start:dynamodb_table]
 def dynamodb_table(
-    hash_key: str,
-    range_key: str | None = None,
+    pk: Key,
+    sk: Key | None = None,
     *,
-    key_type: Literal["S", "N", "B"] = "S",
+    gsis: Sequence[Index] = (),
+    lsis: Sequence[Index] = (),
     deletion_protection: bool = True,
     tags: list[Expr[Tag]] | None = None,
 ) -> dynamodb.Table:
-    """An on-demand table with point-in-time recovery. Both keys have type `key_type`."""
-    keys = [hash_key] + ([range_key] if range_key else [])
-    props: dynamodb.TableProps = {
-        "AttributeDefinitions": [{"AttributeName": k, "AttributeType": key_type} for k in keys],
-        "KeySchema": [{"AttributeName": k, "KeyType": "HASH" if k == hash_key else "RANGE"} for k in keys],
-        "BillingMode": "PAY_PER_REQUEST",
-        "PointInTimeRecoverySpecification": {"PointInTimeRecoveryEnabled": True},
-        "DeletionProtectionEnabled": deletion_protection,
-    }
-    if tags:
-        props["Tags"] = tags
-    return dynamodb.table(**props)
+    """An on-demand table with point-in-time recovery. Keys are `"name"` (a string) or `("name", "N")`."""
+    return dynamodb.table(
+        **keys(pk, sk, gsis=gsis, lsis=lsis),
+        BillingMode="PAY_PER_REQUEST",
+        PointInTimeRecoverySpecification={"PointInTimeRecoveryEnabled": True},
+        DeletionProtectionEnabled=deletion_protection,
+        **({"Tags": tags} if tags else {}),
+    )
 # --8<-- [end:dynamodb_table]
 
 

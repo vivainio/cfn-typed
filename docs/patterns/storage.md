@@ -45,6 +45,22 @@ set those defaults once.
 On-demand billing and point-in-time recovery are the defaults you almost always want, and deletion protection is
 on unless you turn it off. The pattern returns the table itself, so you choose its logical ID.
 
+The key properties come from `cfn_typed.dynamodb.keys`, which is library code and has no opinions:
+
+```python
+table = dynamodb_table("pk", ("ts", "N"), gsis=[gsi("by-user", "user", projection=["name"])])
+```
+
+- **A key is `"name"` or `("name", "N")`.** A bare name is a string attribute.
+- **`AttributeDefinitions` is derived.** CloudFormation wants every key of the table and of each index declared
+  exactly once. `keys` collects them, and refuses one name with two types.
+- **The result is a plain `dict`.** Spread it into the factory, `dynamodb.table(**keys(...), BillingMode=...)`, and
+  `ty` still checks everything you pass next to it. The keys themselves are correct by construction, so they are
+  not typed against the generated shapes: that keeps this module free of generated types, with nothing to drift.
+  The arguments are typed, though: an attribute type is `"S"`, `"N"` or `"B"`, and a projection is `"ALL"`,
+  `"KEYS_ONLY"` or a list of names.
+- **`lsi("name", sk)`** is a local index: it takes the table's hash key.
+
 ## A container repository
 
 ```python

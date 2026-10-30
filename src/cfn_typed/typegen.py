@@ -28,11 +28,12 @@ import os
 import shutil
 import re
 import sys
+import tomllib
 import urllib.request
 import zipfile
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 SCHEMA_URL = "https://schema.cloudformation.us-east-1.amazonaws.com/CloudformationSchema.zip"
 CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "cfn-typegen" / "CloudformationSchema.zip"
@@ -127,7 +128,9 @@ class ResourceGen:
                 return "None"
             case "array":
                 items = node.get("items")
-                return f"Expr[list[{self.ty(items, hint) if isinstance(items, dict) else 'Any'}]]"
+                inner = self.ty(items, hint) if isinstance(items, dict) else "Any"
+                # Sequence is covariant, so a list of plain dicts fits a list of Expr[...]; a str is a Sequence[str], so strings keep list
+                return f"Expr[list[{inner}]]" if inner == "Expr[str]" else f"Expr[Sequence[{inner}]]"
             case "object":
                 return self.obj(node, hint)
         return "Any"
@@ -171,9 +174,9 @@ class ResourceGen:
 
     # -- classes --
 
-    def build_class(self, name: str, node: Schema, skip: frozenset[str] = frozenset()) -> bool:
-        """Emit a TypedDict block; returns whether any field is required."""
-        required = set(node.get("required", ())) - skip
+    def build_class(self, name: str, node: Schema, skip: frozenset[str] = frozenset(), optional: frozenset[str] = frozenset(), force: frozenset[str] = frozenset()) -> bool:
+        """Emit a TypedDict block; returns whether any field is required. `optional` relaxes required fields, `force` requires others."""
+        required = (set(node.get("required", ())) - skip - optional) | (force & node.get("properties", {}).keys())
         fields = [
             (k, self.ty(v, name + pascal(k)), k in required, short(v.get("description")) if self.docs else None)
             for k, v in node.get("properties", {}).items()
@@ -200,13 +203,42 @@ class ResourceGen:
         return any(req for _, _, req, _ in fields)
 
 
+# Where the registry's `required` list differs from cfn-lint's bundled schemas (of ~1,800 types, only these three).
+# A nested stack gets a generated name and cannot be created without a template. QuotaShareName is taken from
+# cfn-lint without independent confirmation.
+DEFAULT_OPTIONAL = ["AWS::CloudFormation::Stack.StackName"]
+DEFAULT_REQUIRED = ["AWS::CloudFormation::Stack.TemplateURL", "AWS::Batch::QuotaShare.QuotaShareName"]
+
+
+def prop_overrides(entries: list[str]) -> dict[str, frozenset[str]]:
+    """`["AWS::X::Y.Prop", ...]` as {type name: its properties}."""
+    out: dict[str, set[str]] = defaultdict(set)
+    for entry in entries:
+        type_name, dot, prop = entry.rpartition(".")
+        if not dot or not prop:
+            sys.exit(f"optional and required entries look like AWS::Service::Resource.Property, got {entry!r}")
+        out[type_name].add(prop)
+    return {k: frozenset(v) for k, v in out.items()}
+
+
+class Overrides(NamedTuple):
+    """Top-level properties whose `required` status differs from the registry schema."""
+
+    optional: dict[str, frozenset[str]]
+    required: dict[str, frozenset[str]]
+
+    @classmethod
+    def of(cls, optional: list[str] | None = None, required: list[str] | None = None) -> "Overrides":
+        return cls(prop_overrides([*DEFAULT_OPTIONAL, *(optional or [])]), prop_overrides([*DEFAULT_REQUIRED, *(required or [])]))
+
+
 def readonly_props(schema: Schema) -> frozenset[str]:
     return frozenset(p.split("/")[2] for p in schema.get("readOnlyProperties", []) if p.count("/") == 2)
 
 
 # Names the generated modules import. Reserved so a schema definition can't shadow them.
 IMPORTS = {
-    "collections.abc": ["Mapping"],
+    "collections.abc": ["Mapping", "Sequence"],
     "typing": ["Any", "Literal", "NotRequired", "Unpack"],
     "typing_extensions": ["TypedDict"],
     "cfn_typed.base": ["DeletionPolicy", "DependsOn", "ResourceAttrs", "Tag", "UpdateReplacePolicy", "build"],
@@ -224,7 +256,7 @@ def imports(body: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: str | None = None) -> str:
+def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: str | None = None, overrides: Overrides | None = None) -> str:
     mod = Module()
     plans = []
     for s in sorted(schemas, key=lambda s: s["typeName"]):
@@ -233,7 +265,8 @@ def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: s
     for schema, res, props_cls, factory in plans:
         type_name = schema["typeName"]
         gen = ResourceGen(mod, schema, res, docs)
-        has_required = gen.build_class(props_cls, schema, readonly_props(schema))
+        ov = overrides or Overrides.of()
+        has_required = gen.build_class(props_cls, schema, readonly_props(schema), ov.optional.get(type_name, frozenset()), ov.required.get(type_name, frozenset()))
         doc = short(schema.get("description")) if docs else None
         mod.blocks.append("\n".join([
             f"class {res}(ResourceAttrs):",
@@ -300,7 +333,7 @@ def select(schemas: list[Schema], patterns: list[str]) -> list[Schema]:
     return [s for s in schemas if any(fnmatch.fnmatchcase(s["typeName"].lower(), p) for p in wanted)]
 
 
-def write(out: Path, schemas: list[Schema], docs: bool = True, stamp: str | None = None) -> None:
+def write(out: Path, schemas: list[Schema], docs: bool = True, stamp: str | None = None, overrides: Overrides | None = None) -> None:
     groups: dict[str, list[Schema]] = defaultdict(list)
     for schema in schemas:
         parts = schema["typeName"].split("::")
@@ -316,7 +349,7 @@ def write(out: Path, schemas: list[Schema], docs: bool = True, stamp: str | None
     (out / "__init__.py").write_text(f'{MARKER}.\n"""Generated CloudFormation resource modules, one per service."""\n')
     for svc, items in sorted(groups.items()):
         title = "::".join(items[0]["typeName"].split("::")[:2])
-        (out / f"{svc}.py").write_text(render_module(title, items, docs, stamp))
+        (out / f"{svc}.py").write_text(render_module(title, items, docs, stamp, overrides))
     print(f"wrote {sum(map(len, groups.values()))} resources in {len(groups)} modules to {out}")
 
 
@@ -369,13 +402,29 @@ def search_main(argv: list[str]) -> None:
     print(f"\n{len(found)} match{'es' if len(found) != 1 else ''}{more}. Generate with: cfn-typegen --out DIR <type>...", file=sys.stderr)
 
 
+def load_config(path: Path) -> dict[str, Any]:
+    """Settings from a TOML file; its relative paths (`out`, `templates`, `schemas`) are resolved against its directory."""
+    config = tomllib.loads(path.read_text())
+    for key in ("out", "schemas"):
+        if key in config:
+            config[key] = str(path.parent / config[key])
+    if "templates" in config:
+        config["templates"] = [str(path.parent / t) for t in config["templates"]]
+    return config
+
+
 def main(argv: list[str] | None = None) -> None:
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["search"]:
         return search_main(argv[1:])
-    ap = argparse.ArgumentParser(prog="cfn-typegen", description="Generate typed CloudFormation resource modules.", epilog="Not sure of a type name? Run: cfn-typegen search WORD...")
+    if argv[:1] == ["init-repo"]:
+        from cfn_typed.scaffold import init_repo_main
+
+        return init_repo_main(argv[1:])
+    ap = argparse.ArgumentParser(prog="cfn-typegen", description="Generate typed CloudFormation resource modules.", epilog="Not sure of a type name? Run: cfn-typegen search WORD...\nStarting a package of generated types? Run: cfn-typegen init-repo NAME")
     ap.add_argument("types", nargs="*", help="resource types or globs, e.g. AWS::SQS::Queue or 'AWS::Lambda::*'")
-    ap.add_argument("--out", type=Path, required=True, help="directory to write the modules into")
+    ap.add_argument("--config", type=Path, help="TOML file with out, types, all, templates, docs, schemas (default: ./cfn-typegen.toml if present)")
+    ap.add_argument("--out", type=Path, help="directory to write the modules into (default: `out` in the config file)")
     ap.add_argument("--template", type=Path, action="append", default=[], help="JSON template; emit the types it uses")
     ap.add_argument("--all", action="store_true", help="emit every resource type")
     ap.add_argument("--no-docs", action="store_true", help="leave the description docstrings out (much smaller output)")
@@ -383,12 +432,23 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--refresh", action="store_true", help="download the schemas again, picking up new AWS resources")
     args = ap.parse_args(argv)
 
-    patterns = args.types + [t for path in args.template for t in template_types(path)]
-    if not patterns and not args.all:
-        ap.error("name resource types, pass --template, or use --all")
-    zip_path = ensure_schemas(args.schemas, args.refresh)
+    config_path = args.config or Path("cfn-typegen.toml")
+    if args.config and not config_path.is_file():
+        ap.error(f"no such config file: {config_path}")
+    config = load_config(config_path) if config_path.is_file() else {}
+    named = bool(args.types or args.template or args.all)  # types named on the command line replace the file's
+    out = args.out or (Path(config["out"]) if "out" in config else None)
+    if out is None:
+        ap.error("pass --out, or set `out` in the config file")
+    templates = args.template if named else [Path(t) for t in config.get("templates", [])]
+    patterns = (args.types if named else config.get("types", [])) + [t for path in templates for t in template_types(path)]
+    everything = args.all if named else config.get("all", False)
+    if not patterns and not everything:
+        ap.error("name resource types, pass --template, use --all, or list `types` in the config file")
+    docs = not args.no_docs and config.get("docs", True)
+    zip_path = ensure_schemas(args.schemas if args.schemas != CACHE or "schemas" not in config else Path(config["schemas"]), args.refresh)
     schemas = load_schemas(zip_path)
-    write(args.out, schemas if args.all else select(schemas, patterns), docs=not args.no_docs, stamp=schema_stamp(zip_path))
+    write(out, schemas if everything else select(schemas, patterns), docs=docs, stamp=schema_stamp(zip_path), overrides=Overrides.of(config.get("optional", []), config.get("required", [])))
 
 
 if __name__ == "__main__":

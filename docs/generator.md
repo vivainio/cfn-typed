@@ -17,6 +17,45 @@ a local copy. A rerun replaces only files it generated earlier.
 `--no-docs` leaves out the description docstrings (the first sentence of each property's
 AWS documentation). The types are identical; the output is about 30% smaller.
 
+## Configuration file
+
+With no arguments, `cfn-typegen` reads `cfn-typegen.toml` in the current directory; point at
+another file with `--config path.toml`. Relative paths inside it are relative to the file.
+
+```toml
+out = "src/acme_cfn"
+types = ["AWS::S3::*", "AWS::Lambda::*"]   # or: all = true
+templates = ["template.json"]              # optional: also the types these use
+docs = false
+schemas = "CloudformationSchema.zip"       # optional: a pinned snapshot
+optional = ["AWS::Foo::Bar.Baz"]           # optional: required in the schema, but may be omitted
+required = ["AWS::Foo::Bar.Qux"]           # optional: not required in the schema, but must be given
+```
+
+`optional` and `required` correct the registry where it disagrees with CloudFormation: each
+`Type.Property` becomes `NotRequired` or required. Three corrections are built in, taken from
+cfn-lint: `AWS::CloudFormation::Stack.StackName` may be omitted (CloudFormation names a nested
+stack) and `TemplateURL` is required, and `AWS::Batch::QuotaShare.QuotaShareName` is required.
+Your entries add to those. Checked against cfn-lint's bundled
+schemas, these are the only differences in `required` across about 1,800 resource types.
+
+Types named on the command line replace the file's `types`; `--out` overrides `out`.
+
+## Publishing generated types
+
+`cfn-typegen init-repo` scaffolds a repository that holds *only* generated types, ready to
+publish under your own name:
+
+```sh
+cfn-typegen init-repo acme-cfn 'AWS::S3::*' 'AWS::Lambda::*'
+cd acme-cfn && uv run cfn-typegen
+```
+
+It writes `cfn-typegen.toml` (the output directory and the types to generate), a `pyproject.toml`, a weekly workflow that
+regenerates against fresh schemas and opens a pull request, and a workflow that builds and
+publishes on a `v*` tag. Name no types to generate every one. Keep hand-written helpers in
+a separate package, so regenerating can never overwrite them.
+
 ## Refreshing
 
 The cached schemas are never updated on their own, so a resource or property AWS added last

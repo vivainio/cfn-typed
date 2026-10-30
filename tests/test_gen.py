@@ -177,3 +177,53 @@ def test_refresh_redownloads_only_when_asked_and_keeps_the_cache_on_failure(tmp_
         gen.ensure_schemas(cache, refresh=True)
     assert cache.read_bytes() == good               # a failed refresh leaves the old cache intact
     assert list(cache.parent.iterdir()) == [cache]  # and no half-downloaded file
+
+
+def test_init_repo_scaffolds_a_types_only_package(tmp_path: Any) -> None:
+    root = tmp_path / "acme-cfn"
+    gen.main(["init-repo", "acme-cfn", "AWS::S3::*", "AWS::SQS::Queue", "--dir", str(root)])
+    assert 'name = "acme-cfn"' in (root / "pyproject.toml").read_text()
+    assert 'packages = ["src/acme_cfn"]' in (root / "pyproject.toml").read_text()
+    config = gen.load_config(root / "cfn-typegen.toml")
+    assert config["types"] == ["AWS::S3::*", "AWS::SQS::Queue"] and config["out"] == str(root / "src/acme_cfn")
+    assert "uv run cfn-typegen --refresh" in (root / ".github/workflows/refresh.yml").read_text()
+    assert (root / "src/acme_cfn/py.typed").exists()
+    with pytest.raises(SystemExit):  # will not write into a directory that has files
+        gen.main(["init-repo", "acme-cfn", "--dir", str(root)])
+
+
+def test_init_repo_without_types_generates_everything(tmp_path: Any) -> None:
+    gen.main(["init-repo", "acme-cfn", "--dir", str(tmp_path / "r")])
+    assert gen.load_config(tmp_path / "r" / "cfn-typegen.toml")["all"] is True
+
+
+def test_config_paths_resolve_against_the_file(tmp_path: Any) -> None:
+    (tmp_path / "x.toml").write_text('out = "gen"\ntypes = ["AWS::SQS::Queue"]\ntemplates = ["t.json"]\n')
+    config = gen.load_config(tmp_path / "x.toml")
+    assert config == {"out": str(tmp_path / "gen"), "types": ["AWS::SQS::Queue"], "templates": [str(tmp_path / "t.json")]}
+
+
+def test_config_flag_points_at_a_file_and_rejects_a_missing_one(tmp_path: Any) -> None:
+    with pytest.raises(SystemExit):
+        gen.main(["--config", str(tmp_path / "nope.toml")])
+
+
+def test_overrides_relax_and_require_top_level_properties_and_stack_is_corrected_by_default() -> None:
+    stack = {"typeName": "AWS::CloudFormation::Stack", "properties": {"StackName": {"type": "string"}, "TemplateURL": {"type": "string"}}, "required": ["StackName"]}
+    ns: dict[str, Any] = {}
+    exec(compile(gen.render_module("AWS::CloudFormation", [stack]), "<stack>", "exec"), ns)
+    assert ns["StackProps"].__required_keys__ == {"TemplateURL"}
+
+    extra = gen.Overrides.of(optional=["AWS::Foo::Widget.Name"], required=["AWS::Foo::Widget.Part"])
+    ns = {}
+    exec(compile(gen.render_module("AWS::Foo", [WIDGET], overrides=extra), "<widget>", "exec"), ns)
+    assert ns["WidgetProps"].__required_keys__ == {"Part"}
+    with pytest.raises(SystemExit):
+        gen.prop_overrides(["NoDotHere"])
+
+
+def test_lists_are_covariant_sequences_except_lists_of_strings() -> None:
+    src = gen.render_module("AWS::Foo", [WIDGET], docs=False)
+    assert "Names: NotRequired[Expr[list[Expr[str]]]]" in src  # a str must not satisfy a list of strings
+    assert "Tags: NotRequired[Expr[Sequence[Expr[Tag]]]]" in src
+    assert "Sequence" in src.split("\n\n\n")[0]

@@ -6,7 +6,7 @@ icon: lucide/skull
 
 You wanted a Lambda function and a queue. You got a program.
 
-## You thought you could just use Python
+## Just use Python
 
 "Hey, I don't need to use Node, I will just use Python." So here is your Python. Open the CDK's own
 Python `Bucket` (`aws_cdk/aws_s3/__init__.py` in the
@@ -21,8 +21,8 @@ started with a heap limit of 4.069 GB (`--max-old-space-size=4069`), because Nod
 4.069 GB to generate your 6 lines of JSON. It is not even JSON-RPC. It is a bespoke RPC protocol, to
 call a TypeScript library from Python.
 
-The wheel is 59 MB and installs as 219 MB. You thought you could just use Python, but it's Node.js and
-2000 npm deps in a trenchcoat.
+The wheel is 59 MB and installs as 219 MB. It's Node.js and 2000 npm deps in a
+trenchcoat.
 
 Here it is Python, and the output is `json.dumps`.
 

@@ -8,7 +8,8 @@ You wanted a Lambda function and a queue. You got a program.
 
 ## You thought you could just use Python
 
-Open the Python `Bucket` and the whole implementation is this:
+Open the CDK's own Python `Bucket` (`aws_cdk/aws_s3/__init__.py` in the
+[`aws-cdk-lib`](https://pypi.org/project/aws-cdk-lib/) package) and the whole implementation is this:
 
 ```python
 jsii.create(self.__class__, self, [scope, id, props])

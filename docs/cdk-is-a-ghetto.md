@@ -4,6 +4,8 @@ icon: lucide/skull
 
 # CDK is a Ghetto
 
+![Node.js brain damage](https://github.com/user-attachments/assets/d9bf3d11-4d30-44b2-ac4f-9133daa7f3ee){ width="720" }
+
 You wanted a Lambda function and a queue. Maybe some tags. You got 10 million lines of Node dot JS.
 
 ## Just use Python

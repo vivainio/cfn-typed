@@ -1,5 +1,7 @@
 """DynamoDB key plumbing: `AttributeDefinitions`, `KeySchema` and the indexes, derived from the keys alone.
 
+Optional: `dynamodb.table(...)` takes these properties directly, and nothing else in the library needs this module.
+
 CloudFormation wants every key attribute of the table and of every index declared once in `AttributeDefinitions`.
 Writing that list by hand is where the mistakes are, so `keys` collects it. The result is a fragment of
 `TableProps` that you spread into the generated factory:

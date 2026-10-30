@@ -45,7 +45,9 @@ set those defaults once.
 On-demand billing and point-in-time recovery are the defaults you almost always want, and deletion protection is
 on unless you turn it off. The pattern returns the table itself, so you choose its logical ID.
 
-The key properties come from `cfn_typed.dynamodb.keys`, which is library code and has no opinions:
+The key properties come from `cfn_typed.dynamodb.keys`. **It is entirely optional.** `dynamodb.table(...)` takes
+`AttributeDefinitions`, `KeySchema` and the indexes as ordinary typed properties, and writing them by hand is
+fine, and often clearer for a simple table. `keys` only saves the bookkeeping, mostly once a table has indexes:
 
 ```python
 table = dynamodb_table("pk", ("ts", "N"), gsis=[gsi("by-user", "user", projection=["name"])])

@@ -66,6 +66,16 @@ in `cfn_typed.policy`, not at the top level. They are listed on the [policy page
 [Composing fragments](patterns/composing.md) has the reasoning and examples. A pattern's
 handle satisfies `HasResources` without importing it.
 
+## DynamoDB keys (optional)
+
+| Name | What it is |
+|---|---|
+| `cfn_typed.dynamodb.keys` | `AttributeDefinitions`, `KeySchema` and indexes from `keys("pk", ("ts", "N"), gsis=[...])`; returns a plain dict to spread into `dynamodb.table` |
+| `gsi`, `lsi` | the index arguments for `keys` |
+
+Nothing depends on these: writing the properties by hand is just as valid. The
+[storage pattern](patterns/storage.md) shows when it saves effort.
+
 ## Parameters
 
 | Name | What it is |

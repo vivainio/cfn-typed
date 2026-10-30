@@ -18,6 +18,18 @@ def test_a_matching_file_passes_and_json_is_chosen_by_suffix(tmp_path: Path) -> 
     assert render_for(json_path, TEMPLATE).endswith("}\n")
 
 
+def test_json_can_be_indented_with_tabs(tmp_path: Path) -> None:
+    path = tmp_path / "t.json"
+    assert_matches_file(TEMPLATE, path, update=True, indent="\t")
+    assert path.read_text().splitlines()[1].startswith('\t"Resources"')
+    assert_matches_file(TEMPLATE, path, update=False, indent="\t")
+    with pytest.raises(AssertionError, match="differs"):
+        assert_matches_file(TEMPLATE, path, update=False)  # the default of two spaces is a different file
+    # nothing in a tab-indented file is trailing whitespace, CRLF or space-indented
+    text = path.read_text()
+    assert "\r" not in text and text.endswith("}\n") and all(line == line.rstrip() and " " not in line[: len(line) - len(line.lstrip())] for line in text.splitlines())
+
+
 def test_a_difference_fails_with_a_line_diff_and_the_way_to_accept_it(tmp_path: Path) -> None:
     path = tmp_path / "t.yaml"
     assert_matches_file(TEMPLATE, path, update=True)

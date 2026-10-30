@@ -17,7 +17,8 @@ _SHORT = {"Ref"} | {
 }
 
 
-def to_json(template: Mapping[str, Any], indent: int | None = 2) -> str:
+def to_json(template: Mapping[str, Any], indent: int | str | None = 2) -> str:
+    """JSON in insertion order. `indent` is as in `json.dumps`: a number of spaces, or a string such as `"\\t"`."""
     return json.dumps(template, indent=indent)
 
 

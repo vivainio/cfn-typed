@@ -102,6 +102,10 @@ to compare against.
 
 The file type follows the name: `.yaml` is rendered with `to_yaml`, `.json` with `to_json`.
 
+JSON is indented with two spaces. A repository whose JSON files use tabs passes the indent through:
+`assert_matches_file(template, "rendered/stack.json", indent="\t")`, and `to_json(template, indent="\t")` renders
+the same text. `indent` is as in `json.dumps`.
+
 ## Keeping the output deterministic
 
 The check is exact, so the generator must render the same text every time. The library already

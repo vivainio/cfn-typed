@@ -6,39 +6,6 @@ icon: lucide/skull
 
 You wanted a Lambda function and a queue. You got a program.
 
-## Your template is the output of a program
-
-With the CDK the thing you review is not the thing that deploys. You write TypeScript, or Python that
-talks to a Node.js process through jsii, the code builds a tree of constructs, and `cdk synth` flattens
-the tree into a CloudFormation template that nobody wrote and few people read. When the two disagree,
-you debug the program by reading its output.
-
-Here the template is a `dict`. You can `print` it. There is nothing in between.
-
-## `cdk synth` is for show
-
-In theory you run `cdk synth`, read the template and deploy it when you are happy. In practice nobody
-can review what comes out. Logical IDs carry a hash (`MyBucketF68F3FF0`), assets turn into parameters
-and keys, and the CDK adds its own metadata, bootstrap version checks and helper resources that
-you never asked for. Even synthesis is not always offline: a lookup such as `Vpc.fromLookup` asks your
-AWS account what is in it, and the answer is cached in `cdk.context.json`. So the last real check
-is `cdk deploy` against your precious production account, and you find out what the template says by
-running it.
-
-Here the template you read is the template you deploy, and generating it asks nobody anything. The stack
-gets 200 ms to synthesize, as opposed to a 5 minute deploy where you hope for the best.
-
-## Logical IDs come from where a thing sits in the tree
-
-The CDK derives each resource's logical ID from its path in the construct tree, plus a hash. So you
-refactor by moving one line, tidying a database into a nicer parent construct, and the CDK destroys
-your database to start a new one. To CloudFormation a changed logical ID is a deletion and a creation,
-and it does not ask what is in the old one. You may have lost all your customers, but you get a
-cleaner TypeScript file. The escape hatch is to override the logical ID by hand,
-after you have found out.
-
-Here a logical ID is a key in a dict. It is whatever you typed, and it moves only when you move it.
-
 ## You thought you could just use Python
 
 Here is how the CDK gives you Python. The library is written in TypeScript. A tool called jsii compiles
@@ -64,6 +31,41 @@ JavaScript files. You thought you could just use Python, but it's Node.js and 20
 trenchcoat.
 
 Here it is Python, and the output is `json.dumps`.
+
+## Your template is the output of a program
+
+With the CDK the thing you review is not the thing that deploys. You write TypeScript, or Python that
+talks to a Node.js process through jsii, the code builds a tree of constructs, and `cdk synth` flattens
+the tree into a CloudFormation template that nobody wrote and few people read. When the two disagree,
+you debug the program by reading its output.
+
+Here the template is a `dict`. You can `print` it. There is nothing in between.
+
+## `cdk synth` is for show
+
+In theory you run `cdk synth`, read the template and deploy it when you are happy. In practice nobody
+can review what comes out. Logical IDs carry a hash (`MyBucketF68F3FF0`), assets turn into parameters
+and keys, and the CDK adds its own metadata, bootstrap version checks and helper resources that
+you never asked for. Even synthesis is not always offline: a lookup such as `Vpc.fromLookup` asks your
+AWS account what is in it, and the answer is cached in `cdk.context.json`. So the last real check
+is `cdk deploy` against your precious production account, and you find out what the template says by
+running it.
+
+Here the template you read is the template you deploy, and generating it asks nobody anything. The stack
+gets 200 ms to synthesize, as opposed to a 5 minute deploy where you hope for the best.
+
+## Refactoring destroys your resources
+
+You refactor by moving one line. You tidy the database into a nicer parent construct, and the CDK
+destroys your database to start a new one. You may have lost all your customers, but you get a cleaner
+TypeScript file.
+
+The cause is that the CDK derives each resource's logical ID from its path in the construct tree, plus
+a hash. Move the construct and the path changes, and the logical ID with it. To CloudFormation a
+changed logical ID is a deletion and a creation, and it does not ask what is in the old one. The escape
+hatch is to override the logical ID by hand, after you have found out.
+
+Here a logical ID is a key in a dict. It is whatever you typed, and it moves only when you move it.
 
 ## The same code can mean different permissions
 

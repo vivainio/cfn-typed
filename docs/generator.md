@@ -30,6 +30,9 @@ docs = false
 schemas = "CloudformationSchema.zip"       # optional: a pinned snapshot
 optional = ["AWS::Foo::Bar.Baz"]           # optional: required in the schema, but may be omitted
 required = ["AWS::Foo::Bar.Qux"]           # optional: not required in the schema, but must be given
+unconstrained = ["AWS::Foo::Bar.Quux"]     # optional: drop this property's value constraints
+constraints = true                         # false: leave out the CONSTRAINTS tables
+literal_enums = false                      # true: fixed sets of values become Literal[...]
 ```
 
 `optional` and `required` correct the registry where it disagrees with CloudFormation: each
@@ -40,6 +43,28 @@ Your entries add to those. Checked against cfn-lint's bundled
 schemas, these are the only differences in `required` across about 1,800 resource types.
 
 Types named on the command line replace the file's `types`; `--out` overrides `out`.
+
+## Constraints and `Literal` enums
+
+Each module ends with a `CONSTRAINTS` table: the registry's allowed values, patterns, lengths,
+ranges and item counts, for [`assert_constraints_hold`](testing.md#checking-values-against-the-schema).
+It is written as small as it goes (one-letter keys, no spaces, shared parts written once), so it
+adds about 30% to the output: 5.3 MB for every type, against 4.0 MB without. `--no-constraints`
+(or `constraints = false`) leaves it out, and `unconstrained = ["Type.Property"]` drops one
+property whose constraint is wrong. Patterns Python's `re` cannot compile are left out.
+
+`--literal-enums` (or `literal_enums = true`) goes further and types each property that has a
+fixed set of values as `Literal[...]`, so the editor completes the values and a wrong one is a
+type error:
+
+```python
+logs.log_group(RetentionInDays=30)   # ok
+logs.log_group(RetentionInDays=31)   # error: Expected Literal[1, 3, 5, 7, 14, ...]
+```
+
+It is off by default because AWS adds values faster than the schema zip changes: a valid new
+value is a type error until you regenerate with `--refresh`. The constraints check has no such
+cost, because it only runs when you ask for it.
 
 ## Publishing generated types
 

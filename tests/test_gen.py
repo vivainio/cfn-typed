@@ -227,3 +227,26 @@ def test_lists_are_covariant_sequences_except_lists_of_strings() -> None:
     assert "Names: NotRequired[Expr[list[Expr[str]]]]" in src  # a str must not satisfy a list of strings
     assert "Tags: NotRequired[Expr[Sequence[Expr[Tag]]]]" in src
     assert "Sequence" in src.split("\n\n\n")[0]
+
+
+def test_literal_enums_are_off_by_default_and_a_flag_turns_them_on() -> None:
+    schema = {
+        "typeName": "AWS::Foo::Dial",
+        "definitions": {"Level": {"type": "integer", "enum": [1, 2, 3]}},
+        "properties": {
+            "Mode": {"type": "string", "enum": ["fast", "slow"]},
+            "Level": {"$ref": "#/definitions/Level"},
+            "Name": {"type": "string"},
+            "Mixed": {"type": "string", "enum": ["a", None]},  # not all scalars: left as a plain str
+        },
+    }
+    plain = gen.render_module("AWS::Foo", [schema], constraints=False)
+    assert "Mode: NotRequired[Expr[str]]" in plain and "Literal[" not in plain.split("class DialProps")[1].split("class Dial(")[0]
+
+    literal = gen.render_module("AWS::Foo", [schema], constraints=False, literal_enums=True)
+    assert "Mode: NotRequired[Expr[Literal['fast', 'slow']]]" in literal
+    assert "Level: NotRequired[Expr[Literal[1, 2, 3]]]" in literal
+    assert "Name: NotRequired[Expr[str]]" in literal and "Mixed: NotRequired[Expr[str]]" in literal
+    ns: dict[str, Any] = {}
+    exec(compile(literal, "<dial>", "exec"), ns)
+    assert ns["dial"](Mode="fast")["Properties"] == {"Mode": "fast"}

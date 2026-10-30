@@ -12,8 +12,10 @@ import difflib
 import os
 from collections.abc import Mapping
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
+from cfn_typed.constraints import find_constraint_problems
 from cfn_typed.references import find_reference_problems
 from cfn_typed.render import to_json, to_yaml
 
@@ -60,3 +62,14 @@ def assert_references_resolve(template: Mapping[str, Any]) -> None:
     problems = find_reference_problems(template)
     if problems:
         raise AssertionError("the template has unresolved references:\n" + "\n".join(f"  {p}" for p in problems))
+
+
+def assert_constraints_hold(template: Mapping[str, Any], types: ModuleType | Mapping[str, Any], *, defaults: bool = True) -> None:
+    """Fail if a property value breaks a constraint from the registry schemas: allowed values, pattern, length, range, item count.
+
+    `types` is the package `cfn-typegen` generated. Intrinsics are followed where the template decides their value.
+    CloudFormation reports these only at deploy time. See `cfn_typed.constraints` for what is and is not checked.
+    """
+    problems = find_constraint_problems(template, types, defaults=defaults)
+    if problems:
+        raise AssertionError("the template has values outside the schema's constraints:\n" + "\n".join(f"  {p}" for p in problems))

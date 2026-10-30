@@ -92,3 +92,4 @@ In `cfn_typed.testing`, not the top level. See [Testing](testing.md).
 |---|---|
 | `assert_matches_file` | fail unless the template renders to the committed golden file |
 | `assert_references_resolve` | fail on a `Ref`, `GetAtt`, `Sub`, `DependsOn` or condition that names nothing, or on a dependency cycle |
+| `assert_constraints_hold` | fail on a property value outside the schema's allowed values, pattern, length, range or item count, following intrinsics where the template decides them |

@@ -12,6 +12,7 @@ EXAMPLES = Path(__file__).parent.parent / "examples"
 RENDERED = EXAMPLES / "rendered"
 sys.path.insert(0, str(EXAMPLES))
 
+import cfn_types  # noqa: E402
 import data_consumer  # noqa: E402
 import data_platform  # noqa: E402
 import intrinsics_demo  # noqa: E402
@@ -19,11 +20,12 @@ import minimal  # noqa: E402
 import serverless  # noqa: E402
 import web_stack  # noqa: E402
 
-from cfn_typed.testing import assert_matches_file, assert_references_resolve  # noqa: E402
+from cfn_typed.testing import assert_constraints_hold, assert_matches_file, assert_references_resolve  # noqa: E402
 
 
 def check(template: Any, name: str) -> None:
     assert_references_resolve(template)
+    assert_constraints_hold(template, cfn_types)
     assert_matches_file(template, RENDERED / name)
 
 

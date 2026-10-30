@@ -31,9 +31,11 @@ import sys
 import tomllib
 import urllib.request
 import zipfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, NamedTuple
+
+from cfn_typed.constraints import ITEMS, PROPS, SHORT, VALUES
 
 SCHEMA_URL = "https://schema.cloudformation.us-east-1.amazonaws.com/CloudformationSchema.zip"
 CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "cfn-typegen" / "CloudformationSchema.zip"
@@ -91,10 +93,12 @@ class Module:
 class ResourceGen:
     """Turns one resource schema into TypedDicts inside a Module."""
 
-    def __init__(self, mod: Module, schema: Schema, prefix: str, docs: bool = True) -> None:
-        self.mod, self.schema, self.prefix, self.docs = mod, schema, prefix, docs
+    def __init__(self, mod: Module, schema: Schema, prefix: str, docs: bool = True, literal_enums: bool = False) -> None:
+        self.mod, self.schema, self.prefix, self.docs, self.literal_enums = mod, schema, prefix, docs, literal_enums
         self.cache: dict[str, str] = {}
         self.busy: set[str] = set()
+        self.known: dict[str, Schema | None] = {}  # constraints of each definition, shared by every use
+        self.cut: set[str] = set()  # definitions a cycle was cut at, until that definition finishes
 
     # -- type expressions: always fully wrapped, e.g. `Expr[list[Expr[str]]]` --
 
@@ -117,9 +121,9 @@ class ResourceGen:
                 return union([self.ty(a, hint) for a in alts]) if alts else "Any"
         match t:
             case "string":
-                return "Expr[str]"
+                return self.scalar(node, "Expr[str]")
             case "integer":
-                return "Expr[int]"
+                return self.scalar(node, "Expr[int]")
             case "number":
                 return "Expr[float]"
             case "boolean":
@@ -134,6 +138,13 @@ class ResourceGen:
             case "object":
                 return self.obj(node, hint)
         return "Any"
+
+    def scalar(self, node: Schema, base: str) -> str:
+        """`base`, or the schema's allowed values as a `Literal` when `literal_enums` is on."""
+        enum = node.get("enum")
+        if self.literal_enums and enum and all(isinstance(e, (str, int)) and not isinstance(e, bool) for e in enum):
+            return f"Expr[Literal[{', '.join(repr(e) for e in enum)}]]"
+        return base
 
     def obj(self, node: Schema, hint: str) -> str:
         if node.get("properties"):
@@ -153,9 +164,7 @@ class ResourceGen:
             return self.cache[ref]
         if ref in self.busy:  # a cycle through non-object types
             return "Any"
-        node: Any = self.schema
-        for part in ref.removeprefix("#/").split("/"):
-            node = node[part]
+        node = self.deref(ref)
         last = ref.rsplit("/", 1)[-1]
         hint = self.prefix + pascal(last)
         props = node.get("properties") or {}
@@ -171,6 +180,42 @@ class ResourceGen:
             self.busy.discard(ref)
         self.cache[ref] = out
         return out
+
+    def deref(self, ref: str) -> Schema:
+        node: Any = self.schema
+        for part in ref.removeprefix("#/").split("/"):
+            node = node[part]
+        return node
+
+    # -- value constraints: the checkable keywords, as a nested dict that mirrors the properties --
+
+    def constraints(self, node: Schema, seen: tuple[str, ...] = ()) -> Schema | None:
+        """The constraints at and under `node`, or None when there are none. A node is a dict with any of the
+        leaf keywords plus `props` (name -> node), `items` (node) and `values` (node, for a map's values)."""
+        if "$ref" in node:
+            ref = node["$ref"]
+            if ref in seen:  # a cycle is cut where it closes
+                self.cut.add(ref)
+                return None
+            if ref not in self.known:
+                found = self.constraints(self.deref(ref), (*seen, ref))
+                self.cut.discard(ref)
+                if self.cut:  # cut at a definition further out: this result depends on the path, so do not reuse it
+                    return found
+                self.known[ref] = found
+            return self.known[ref]
+        out: Schema = {k: node[k] for k in LEAF_CONSTRAINTS if k in node and checkable(k, node[k])}
+        if props := {k: c for k, v in node.get("properties", {}).items() if (c := self.constraints(v, seen))}:
+            out["props"] = props
+        items = node.get("items")
+        if isinstance(items, dict) and (c := self.constraints(items, seen)):
+            out["items"] = c
+        if not node.get("properties"):
+            patterns = node.get("patternProperties")
+            value = next(iter(patterns.values())) if patterns else node.get("additionalProperties")
+            if isinstance(value, dict) and (c := self.constraints(value, seen)):
+                out["values"] = c
+        return out or None
 
     # -- classes --
 
@@ -208,6 +253,7 @@ class ResourceGen:
 # cfn-lint without independent confirmation.
 DEFAULT_OPTIONAL = ["AWS::CloudFormation::Stack.StackName"]
 DEFAULT_REQUIRED = ["AWS::CloudFormation::Stack.TemplateURL", "AWS::Batch::QuotaShare.QuotaShareName"]
+DEFAULT_UNCONSTRAINED: list[str] = []  # properties whose registry constraints are known to be wrong
 
 
 def prop_overrides(entries: list[str]) -> dict[str, frozenset[str]]:
@@ -226,10 +272,83 @@ class Overrides(NamedTuple):
 
     optional: dict[str, frozenset[str]]
     required: dict[str, frozenset[str]]
+    unconstrained: dict[str, frozenset[str]]  # no value constraints are generated for these
 
     @classmethod
-    def of(cls, optional: list[str] | None = None, required: list[str] | None = None) -> "Overrides":
-        return cls(prop_overrides([*DEFAULT_OPTIONAL, *(optional or [])]), prop_overrides([*DEFAULT_REQUIRED, *(required or [])]))
+    def of(cls, optional: list[str] | None = None, required: list[str] | None = None, unconstrained: list[str] | None = None) -> "Overrides":
+        return cls(
+            prop_overrides([*DEFAULT_OPTIONAL, *(optional or [])]),
+            prop_overrides([*DEFAULT_REQUIRED, *(required or [])]),
+            prop_overrides([*DEFAULT_UNCONSTRAINED, *(unconstrained or [])]),
+        )
+
+
+LEAF_CONSTRAINTS = ("enum", "pattern", "minLength", "maxLength", "minimum", "maximum", "minItems", "maxItems")
+
+
+def checkable(key: str, value: Any) -> bool:
+    """Whether the validator can use this constraint: scalar enums, patterns Python can compile, plain numbers."""
+    if key == "enum":
+        return isinstance(value, list) and all(isinstance(e, (str, int, float)) for e in value)
+    if key == "pattern":
+        try:
+            re.compile(value)
+        except (re.error, TypeError):
+            return False  # written for another regex dialect: leave it unchecked rather than guess
+        return True
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def constraint_source(table: Schema) -> str:
+    """Python source for the CONSTRAINTS table, as small as it will go: short keys (see `cfn_typed.constraints`), no
+    spaces, and a node used more than once, or a long value repeated, written once as a named constant."""
+    seen: Counter[int] = Counter()
+    values: Counter[str] = Counter()
+
+    def children(n: Schema) -> list[Schema]:
+        return [*n.get("props", {}).values(), *(n[k] for k in ("items", "values") if k in n)]
+
+    def count(n: Schema) -> None:
+        seen[id(n)] += 1
+        if seen[id(n)] == 1:
+            for key in SHORT:
+                if key in n:
+                    values[dump(n[key])] += 1
+            for child in children(n):
+                count(child)
+
+    for props in table.values():
+        for node in props.values():
+            count(node)
+    names: dict[object, str] = {}
+    shared: list[str] = []
+
+    def name(key: object, src: str) -> str:
+        if key not in names:
+            names[key] = f"_c{len(shared)}"
+            shared.append(f"{names[key]}={src}")
+        return names[key]
+
+    def leaf(v: Any) -> str:
+        src = dump(v)
+        return name(src, src) if values[src] > 1 and len(src) > 24 else src
+
+    def expr(n: Schema) -> str:
+        if id(n) in names:
+            return names[id(n)]
+        parts = [f"{SHORT[k]!r}:{leaf(v)}" for k, v in n.items() if k in SHORT]
+        if "props" in n:
+            parts.append(f"{PROPS!r}:{{{','.join(f'{p!r}:{expr(c)}' for p, c in n['props'].items())}}}")
+        parts += [f"{key!r}:{expr(n[long])}" for long, key in (("items", ITEMS), ("values", VALUES)) if long in n]
+        src = "{" + ",".join(parts) + "}"
+        return name(id(n), src) if seen[id(n)] > 1 and children(n) else src
+
+    lines = [f"{t!r}:{{" + ",".join(f"{p!r}:{expr(n)}" for p, n in props.items()) + "}," for t, props in table.items()]
+    return "\n".join([*shared, "CONSTRAINTS:dict[str,Any]={", *lines, "}"])
+
+
+def dump(value: Any) -> str:
+    return json.dumps(value, separators=(",", ":"))  # a JSON scalar or list is also a Python literal here
 
 
 def readonly_props(schema: Schema) -> frozenset[str]:
@@ -256,16 +375,22 @@ def imports(body: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: str | None = None, overrides: Overrides | None = None) -> str:
+def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: str | None = None, overrides: Overrides | None = None, constraints: bool = True, literal_enums: bool = False) -> str:
     mod = Module()
+    table: dict[str, Schema] = {}
     plans = []
     for s in sorted(schemas, key=lambda s: s["typeName"]):
         res = pascal("".join(s["typeName"].split("::")[2:]))
         plans.append((s, mod.claim(res), mod.claim(res + "Props"), mod.claim(snake(res))))
     for schema, res, props_cls, factory in plans:
         type_name = schema["typeName"]
-        gen = ResourceGen(mod, schema, res, docs)
+        gen = ResourceGen(mod, schema, res, docs, literal_enums)
         ov = overrides or Overrides.of()
+        if constraints:
+            top = (gen.constraints(schema) or {}).get("props", {})
+            top = {k: v for k, v in top.items() if k not in ov.unconstrained.get(type_name, ())}
+            if top:
+                table[type_name] = top
         has_required = gen.build_class(props_cls, schema, readonly_props(schema), ov.optional.get(type_name, frozenset()), ov.required.get(type_name, frozenset()))
         doc = short(schema.get("description")) if docs else None
         mod.blocks.append("\n".join([
@@ -286,6 +411,8 @@ def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: s
             f") -> {res}:",
             f"    return build({type_name!r}, props, depends_on, deletion_policy, update_replace_policy, condition, metadata)",
         ]))
+    if constraints:
+        mod.blocks.append(constraint_source(table))
     body = "\n\n\n".join(mod.blocks)
     head = f"{MARKER} from the CloudFormation registry schemas. Do not edit.\n"
     head += "# fmt: off\n# ruff: noqa\n"  # generated code: formatters and linters leave it alone
@@ -333,7 +460,7 @@ def select(schemas: list[Schema], patterns: list[str]) -> list[Schema]:
     return [s for s in schemas if any(fnmatch.fnmatchcase(s["typeName"].lower(), p) for p in wanted)]
 
 
-def write(out: Path, schemas: list[Schema], docs: bool = True, stamp: str | None = None, overrides: Overrides | None = None) -> None:
+def write(out: Path, schemas: list[Schema], docs: bool = True, stamp: str | None = None, overrides: Overrides | None = None, constraints: bool = True, literal_enums: bool = False) -> None:
     groups: dict[str, list[Schema]] = defaultdict(list)
     for schema in schemas:
         parts = schema["typeName"].split("::")
@@ -349,7 +476,7 @@ def write(out: Path, schemas: list[Schema], docs: bool = True, stamp: str | None
     (out / "__init__.py").write_text(f'{MARKER}.\n"""Generated CloudFormation resource modules, one per service."""\n')
     for svc, items in sorted(groups.items()):
         title = "::".join(items[0]["typeName"].split("::")[:2])
-        (out / f"{svc}.py").write_text(render_module(title, items, docs, stamp, overrides))
+        (out / f"{svc}.py").write_text(render_module(title, items, docs, stamp, overrides, constraints, literal_enums))
     print(f"wrote {sum(map(len, groups.values()))} resources in {len(groups)} modules to {out}")
 
 
@@ -428,6 +555,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--template", type=Path, action="append", default=[], help="JSON template; emit the types it uses")
     ap.add_argument("--all", action="store_true", help="emit every resource type")
     ap.add_argument("--no-docs", action="store_true", help="leave the description docstrings out (much smaller output)")
+    ap.add_argument("--no-constraints", action="store_true", help="leave out the CONSTRAINTS tables that assert_constraints_hold checks (smaller output)")
+    ap.add_argument("--literal-enums", action="store_true", help="type properties that have a fixed set of values as Literal[...]; AWS adding a value is a type error until you regenerate")
     ap.add_argument("--schemas", type=Path, default=CACHE, help="CloudformationSchema.zip (downloaded if missing)")
     ap.add_argument("--refresh", action="store_true", help="download the schemas again, picking up new AWS resources")
     args = ap.parse_args(argv)
@@ -448,7 +577,8 @@ def main(argv: list[str] | None = None) -> None:
     docs = not args.no_docs and config.get("docs", True)
     zip_path = ensure_schemas(args.schemas if args.schemas != CACHE or "schemas" not in config else Path(config["schemas"]), args.refresh)
     schemas = load_schemas(zip_path)
-    write(out, schemas if everything else select(schemas, patterns), docs=docs, stamp=schema_stamp(zip_path), overrides=Overrides.of(config.get("optional", []), config.get("required", [])))
+    write(out, schemas if everything else select(schemas, patterns), docs=docs, stamp=schema_stamp(zip_path), overrides=Overrides.of(config.get("optional", []), config.get("required", []), config.get("unconstrained", [])),
+          constraints=config.get("constraints", True) and not args.no_constraints, literal_enums=args.literal_enums or config.get("literal_enums", False))
 
 
 if __name__ == "__main__":

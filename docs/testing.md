@@ -145,6 +145,46 @@ reports dependency cycles. Pseudo parameters such as `AWS::Region` always resolv
 
 It does not check that a `GetAtt` attribute exists on its resource type.
 
+## Checking values against the schema
+
+The registry schemas also say which values a property accepts: a fixed set, a pattern, a
+length, a range, a number of items. The type checker cannot see those, so a bad value renders
+fine and fails at deploy time. `assert_constraints_hold` checks them against the types
+`cfn-typegen` generated:
+
+```python
+import acme_cfn  # the generated package
+from cfn_typed.testing import assert_constraints_hold
+
+def test_orders_stack() -> None:
+    assert_constraints_hold(build("prod"), acme_cfn)
+```
+
+```text
+Resources.Logs.Properties.RetentionInDays: 13 is not one of 1, 3, 5, 7, 14, 30, 60, 90, ... (Ref Retention, default)
+Resources.Q.Properties.RedrivePolicy.maxReceiveCount: 0 is less than the minimum of 1
+```
+
+Only the services the template uses are imported, and a numeric string such as `"443"` is
+checked as a number. A value an intrinsic produces is checked where the template decides it:
+
+| Value | Checked |
+|---|---|
+| `Ref` to a parameter | each of its `AllowedValues`, else its `Default` (`defaults=False` leaves defaults out) |
+| `Fn::If` | both branches |
+| `Fn::FindInMap` | the entry for literal keys, else every entry under the unknown key |
+| `Fn::Sub`, `Fn::Join`, `Fn::Select`, `Fn::Split` | the result, when every piece is known as above |
+| `Ref` to a resource or pseudo parameter, `Fn::GetAtt`, `Fn::ImportValue`, `Fn::GetAZs`, SSM-typed parameters, `{{resolve:...}}` | skipped: decided at deploy time |
+
+A `Default` that is only a placeholder behind an `Fn::If` is reported too. Pass
+`defaults=False`, or keep the value out of the parameter's `Default`. Use
+`cfn_typed.constraints.find_constraint_problems(template, types)` to get the messages as a list.
+
+The registry constrains only what AWS modelled: about 1,500 of 1,870 resource types have at
+least one constrained property, and many common ones (an S3 bucket name, a DynamoDB billing
+mode) have none. It is also sometimes stricter than CloudFormation; see `unconstrained` on
+[the generator page](generator.md#configuration-file).
+
 ## What it does and does not check
 
 A golden file proves the code renders what you committed. It does not prove that CloudFormation

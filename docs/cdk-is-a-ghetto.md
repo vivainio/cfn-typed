@@ -61,7 +61,7 @@ you can deploy a template that might have been forty lines.
 
 ## What the CDK is good at
 
-Honesty, briefly. If you want high-level constructs, bundled assets, a large ecosystem and bindings in
+Honesty, briefly: I love the idea of the CDK. I just hate how it was implemented. If you want high-level constructs, bundled assets, a large ecosystem and bindings in
 several languages, the CDK has them. Because you got a sudden urge to use the Java SDK to generate those 6
 lines of JSON.
 

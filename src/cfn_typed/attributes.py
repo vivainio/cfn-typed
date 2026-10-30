@@ -23,20 +23,23 @@ _SUB_VAR = re.compile(r"\$\{([^}]*)\}")
 
 
 class _Tables:
-    def __init__(self, types: ModuleType | Mapping[str, Any]) -> None:
-        self.types = types
-        self.cache: dict[str, list[str] | None] = {}
+    """The `table` ("ATTRIBUTES", "RULES") of each resource type, read from the generated package on first use."""
 
-    def get(self, type_name: object) -> list[str] | None:
+    def __init__(self, types: ModuleType | Mapping[str, Any], table: str = "ATTRIBUTES") -> None:
+        self.types = types
+        self.table = table
+        self.cache: dict[str, list[Any] | None] = {}
+
+    def get(self, type_name: object) -> list[Any] | None:
         if not isinstance(type_name, str):
             return None
         if isinstance(self.types, Mapping):
             return self.types.get(type_name)
         if type_name not in self.cache:
             module = _service_module(self.types, type_name)
-            if module is not None and not hasattr(module, "ATTRIBUTES"):
-                raise ValueError(f"{module.__name__} has no ATTRIBUTES: regenerate it without --no-constraints")
-            self.cache[type_name] = getattr(module, "ATTRIBUTES", {}).get(type_name)
+            if module is not None and not hasattr(module, self.table):
+                raise ValueError(f"{module.__name__} has no {self.table}: regenerate it without --no-constraints")
+            self.cache[type_name] = getattr(module, self.table, {}).get(type_name)
         return self.cache[type_name]
 
 

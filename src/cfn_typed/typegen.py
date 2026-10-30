@@ -217,6 +217,27 @@ class ResourceGen:
                 out["values"] = c
         return out or None
 
+    # -- combination rules: which properties must, or must not, be set together --
+
+    def rules(self, node: Schema, path: tuple[str, ...] = (), seen: tuple[str, ...] = ()) -> list[Any]:
+        """`[path, kind, data]` for each combination rule at and under `node`; see `cfn_typed.combinations`.
+        `path` names the properties down to the object a rule is about, with "[]" for list items and "*" for map values."""
+        if "$ref" in node:
+            ref = node["$ref"]
+            return [] if ref in seen else self.rules(self.deref(ref), path, (*seen, ref))
+        out: list[Any] = [[list(path), kind, data] for kind, data in node_rules(node)]
+        for name, v in node.get("properties", {}).items():
+            out += self.rules(v, (*path, name), seen)
+        items = node.get("items")
+        if isinstance(items, dict):
+            out += self.rules(items, (*path, "[]"), seen)
+        if not node.get("properties"):
+            patterns = node.get("patternProperties")
+            value = next(iter(patterns.values())) if patterns else node.get("additionalProperties")
+            if isinstance(value, dict):
+                out += self.rules(value, (*path, "*"), seen)
+        return out
+
     # -- classes --
 
     def build_class(self, name: str, node: Schema, skip: frozenset[str] = frozenset(), optional: frozenset[str] = frozenset(), force: frozenset[str] = frozenset()) -> bool:
@@ -297,6 +318,30 @@ def checkable(key: str, value: Any) -> bool:
             return False  # written for another regex dialect: leave it unchecked rather than guess
         return True
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+_BRANCH_KEYS = {"required", "title", "description", "type"}
+
+
+def node_rules(node: Schema) -> list[tuple[str, Any]]:
+    """The combination rules a schema object states itself, as (kind, data): `o` exactly one of the branches
+    (each a list of property names that must all be set), `a` at least one, `d` {property: properties it needs}.
+    Branches that are not plain `required` lists (type unions, nested schemas) are left to the type checker."""
+    out: list[tuple[str, Any]] = []
+    for kind, key in (("o", "oneOf"), ("a", "anyOf")):
+        branches = node.get(key)
+        if isinstance(branches, list) and branches and all(
+            isinstance(b, dict) and isinstance(b.get("required"), list) and set(b) <= _BRANCH_KEYS for b in branches
+        ):
+            out.append((kind, [list(b["required"]) for b in branches]))
+    for key in ("dependencies", "dependentRequired"):
+        deps = {k: list(v) for k, v in (node.get(key) or {}).items() if isinstance(v, list) and all(isinstance(x, str) for x in v)}
+        if deps:
+            out.append(("d", deps))
+    for part in node.get("allOf", []):
+        if isinstance(part, dict):
+            out += node_rules(part)
+    return out
 
 
 def constraint_source(table: Schema) -> str:
@@ -385,6 +430,7 @@ def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: s
     mod = Module()
     table: dict[str, Schema] = {}
     attributes: dict[str, list[str]] = {}
+    combinations: dict[str, list[Any]] = {}
     plans = []
     for s in sorted(schemas, key=lambda s: s["typeName"]):
         res = pascal("".join(s["typeName"].split("::")[2:]))
@@ -395,6 +441,8 @@ def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: s
         ov = overrides or Overrides.of()
         if constraints:
             attributes[type_name] = attribute_names(schema)
+            if found := gen.rules(schema):
+                combinations[type_name] = found
             top = (gen.constraints(schema) or {}).get("props", {})
             top = {k: v for k, v in top.items() if k not in ov.unconstrained.get(type_name, ())}
             if top:
@@ -422,6 +470,7 @@ def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: s
     if constraints:
         mod.blocks.append(constraint_source(table))
         mod.blocks.append(f"ATTRIBUTES:dict[str,Any]={dump(attributes)}")
+        mod.blocks.append(f"RULES:dict[str,Any]={dump(combinations)}")
     body = "\n\n\n".join(mod.blocks)
     head = f"{MARKER} from the CloudFormation registry schemas. Do not edit.\n"
     head += "# fmt: off\n# ruff: noqa\n"  # generated code: formatters and linters leave it alone
@@ -564,7 +613,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--template", type=Path, action="append", default=[], help="JSON template; emit the types it uses")
     ap.add_argument("--all", action="store_true", help="emit every resource type")
     ap.add_argument("--no-docs", action="store_true", help="leave the description docstrings out (much smaller output)")
-    ap.add_argument("--no-constraints", action="store_true", help="leave out the CONSTRAINTS and ATTRIBUTES tables that assert_constraints_hold and assert_attributes_exist check (smaller output)")
+    ap.add_argument("--no-constraints", action="store_true", help="leave out the CONSTRAINTS, ATTRIBUTES and RULES tables that the template checks read (smaller output)")
     ap.add_argument("--literal-enums", action="store_true", help="type properties that have a fixed set of values as Literal[...]; AWS adding a value is a type error until you regenerate")
     ap.add_argument("--schemas", type=Path, default=CACHE, help="CloudformationSchema.zip (downloaded if missing)")
     ap.add_argument("--refresh", action="store_true", help="download the schemas again, picking up new AWS resources")

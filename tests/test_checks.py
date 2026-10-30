@@ -116,3 +116,62 @@ def test_one_call_runs_every_check_and_groups_the_problems(tmp_path: Any, monkey
     assert set(find_all_problems(bad, unused=False)) == {"references"}
     with pytest.raises(AssertionError, match=r"\[references\].*\n.*\[unused\] Parameters.Idle"):
         assert_template_ok(bad)
+
+
+SWITCH: dict[str, Any] = {
+    "typeName": "AWS::Foo::Switch",
+    "properties": {
+        "A": {"type": "string"}, "B": {"type": "string"}, "C": {"type": "string"}, "D": {"type": "string"},
+        "Rules": {"type": "array", "items": {"$ref": "#/definitions/Rule"}},
+        "Free": {"oneOf": [{"type": "string"}, {"type": "object"}]},  # a type union is not a combination rule
+    },
+    "definitions": {"Rule": {"type": "object", "properties": {"X": {"type": "string"}, "Y": {"type": "string"}}, "anyOf": [{"required": ["X"]}, {"required": ["Y"]}]}},
+    "oneOf": [{"required": ["A"]}, {"required": ["B", "C"]}],
+    "dependencies": {"D": ["A"]},
+}
+
+
+def switch_rules() -> dict[str, Any]:
+    ns: dict[str, Any] = {}
+    exec(compile(gen.render_module("AWS::Foo", [SWITCH]), "<switch>", "exec"), ns)
+    return ns["RULES"]
+
+
+def switch(props: dict[str, Any] | None = None) -> dict[str, Any]:
+    from cfn_typed.combinations import find_combination_problems
+
+    return {"p": find_combination_problems({"Resources": {"S": {"Type": "AWS::Foo::Switch", **({"Properties": props} if props is not None else {})}}}, switch_rules())}
+
+
+def test_generator_keeps_plain_required_combinations_only() -> None:
+    assert switch_rules() == {"AWS::Foo::Switch": [
+        [[], "o", [["A"], ["B", "C"]]], [[], "d", {"D": ["A"]}], [["Rules", "[]"], "a", [["X"], ["Y"]]],
+    ]}
+
+
+def test_combinations_are_checked_with_where_and_why() -> None:
+    assert switch({"A": "x"})["p"] == []
+    assert switch({"B": "x", "C": "y"})["p"] == []
+    assert switch({"B": "x"})["p"] == ["Resources.S.Properties: exactly one of 'A' or 'B' + 'C' must be set, but none is"]
+    assert switch()["p"] == ["Resources.S.Properties: exactly one of 'A' or 'B' + 'C' must be set, but none is"]
+    assert "but 2 are" in switch({"A": "x", "B": "y", "C": "z"})["p"][0]
+    assert switch({"D": "x", "B": "y", "C": "z"})["p"] == ["Resources.S.Properties: 'D' is set, which needs 'A'"]
+    assert switch({"A": "x", "Rules": [{"X": "1"}, {}]})["p"] == ["Resources.S.Properties.Rules[1]: at least one of 'X' or 'Y' must be set, but none is"]
+
+
+def test_no_value_and_fn_if_are_followed_without_guessing() -> None:
+    no = {"Ref": "AWS::NoValue"}
+    assert "none is" in switch({"A": no})["p"][0]  # NoValue is not set
+    assert switch({"A": {"Fn::If": ["C1", "x", no]}})["p"] == []  # may be set: not reported
+    assert switch({"A": {"Fn::If": ["C1", no, no]}})["p"] != []
+    assert switch({"Fn::If": ["C1", {"A": "x"}, {"B": "y", "C": "z"}]})["p"] == []  # each branch is fine
+    assert len(switch({"Fn::If": ["C1", {"A": "x"}, {"B": "y"}]})["p"]) == 1  # one branch is not
+    assert switch({"A": "x", "B": {"Fn::If": ["C1", "y", no]}, "C": "z"})["p"] == []  # B + C only maybe both set
+
+
+def test_assert_combinations_valid_and_the_all_in_one() -> None:
+    from cfn_typed.testing import assert_combinations_valid
+
+    t = {"Resources": {"S": {"Type": "AWS::Foo::Switch", "Properties": {"B": "x"}}}}
+    with pytest.raises(AssertionError, match="combination"):
+        assert_combinations_valid(t, switch_rules())

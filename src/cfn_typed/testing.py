@@ -17,6 +17,7 @@ from typing import Any
 
 from cfn_typed.attributes import find_attribute_problems
 from cfn_typed.checks import find_all_problems
+from cfn_typed.combinations import find_combination_problems
 from cfn_typed.constraints import find_constraint_problems
 from cfn_typed.limits import find_limit_problems
 from cfn_typed.references import find_reference_problems, find_unused_problems
@@ -86,6 +87,16 @@ def assert_attributes_exist(template: Mapping[str, Any], types: ModuleType | Map
     problems = find_attribute_problems(template, types)
     if problems:
         raise AssertionError("the template asks for attributes that do not exist:\n" + "\n".join(f"  {p}" for p in problems))
+
+
+def assert_combinations_valid(template: Mapping[str, Any], types: ModuleType | Mapping[str, Any]) -> None:
+    """Fail if properties are set in a combination the schemas rule out: not exactly one of X or Y, or A set without B.
+
+    `types` is the package `cfn-typegen` generated. CloudFormation reports this only at deploy time. See `cfn_typed.combinations`.
+    """
+    problems = find_combination_problems(template, types)
+    if problems:
+        raise AssertionError("the template sets properties in a combination the schema rules out:\n" + "\n".join(f"  {p}" for p in problems))
 
 
 def assert_within_limits(template: Mapping[str, Any], *, inline: bool = False) -> None:

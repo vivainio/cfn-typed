@@ -7,8 +7,8 @@ The result maps the name of each check that found something to its problems, one
 - `references`: dangling names, unguarded references to conditional resources, dependency cycles (`cfn_typed.references`);
 - `unused`: parameters, conditions and mappings nothing refers to (`unused=False` leaves it out);
 - `limits`: CloudFormation quotas and naming rules (`cfn_typed.limits`);
-- `constraints` and `attributes`: values and `Fn::GetAtt` names against the registry schemas (`cfn_typed.constraints`,
-  `cfn_typed.attributes`). They need `types`, the package `cfn-typegen` generated (a hand-made mapping means something different to each, so
+- `constraints`, `attributes` and `combinations`: values, `Fn::GetAtt` names and "one of / needs" property combinations
+  against the registry schemas (`cfn_typed.constraints`, `cfn_typed.attributes`, `cfn_typed.combinations`). They need `types`, the package `cfn-typegen` generated (a hand-made mapping means something different to each, so
   use the two functions directly for that), and are left out without it.
 """
 
@@ -17,6 +17,7 @@ from types import ModuleType
 from typing import Any
 
 from cfn_typed.attributes import find_attribute_problems
+from cfn_typed.combinations import find_combination_problems
 from cfn_typed.constraints import find_constraint_problems
 from cfn_typed.limits import find_limit_problems
 from cfn_typed.references import find_reference_problems, find_unused_problems
@@ -37,5 +38,6 @@ def find_all_problems(
         "limits": find_limit_problems(template, inline=inline),
         "constraints": find_constraint_problems(template, types, defaults=defaults) if types is not None else [],
         "attributes": find_attribute_problems(template, types) if types is not None else [],
+        "combinations": find_combination_problems(template, types) if types is not None else [],
     }
     return {check: problems for check, problems in found.items() if problems}

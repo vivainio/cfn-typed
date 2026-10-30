@@ -7,20 +7,27 @@ The result maps the name of each check that found something to its problems, one
 - `references`: dangling names, unguarded references to conditional resources, dependency cycles (`cfn_typed.references`);
 - `unused`: parameters, conditions and mappings nothing refers to (`unused=False` leaves it out);
 - `limits`: CloudFormation quotas and naming rules (`cfn_typed.limits`);
+- `values`: `Fn::FindInMap` keys, `Fn::Select` indexes and parameter defaults (`cfn_typed.values`);
+- `iam`: unknown actions, resources of the wrong service, S3 bucket-versus-object ARNs (`cfn_typed.iam`);
+- `lifecycle`: Lambda runtimes past their deprecation date (`cfn_typed.lifecycle`; `today` is for tests);
 - `constraints`, `attributes` and `combinations`: values, `Fn::GetAtt` names and "one of / needs" property combinations
   against the registry schemas (`cfn_typed.constraints`, `cfn_typed.attributes`, `cfn_typed.combinations`). They need `types`, the package `cfn-typegen` generated (a hand-made mapping means something different to each, so
   use the two functions directly for that), and are left out without it.
 """
 
 from collections.abc import Mapping
+from datetime import date
 from types import ModuleType
 from typing import Any
 
 from cfn_typed.attributes import find_attribute_problems
 from cfn_typed.combinations import find_combination_problems
 from cfn_typed.constraints import find_constraint_problems
+from cfn_typed.iam import find_iam_problems
+from cfn_typed.lifecycle import find_lifecycle_problems
 from cfn_typed.limits import find_limit_problems
 from cfn_typed.references import find_reference_problems, find_unused_problems
+from cfn_typed.values import find_value_problems
 
 
 def find_all_problems(
@@ -30,12 +37,16 @@ def find_all_problems(
     inline: bool = False,
     unused: bool = True,
     defaults: bool = True,
+    today: date | None = None,
 ) -> dict[str, list[str]]:
-    """Every problem any check finds in `template`, grouped by check. `inline`, `unused` and `defaults` are passed to the checks they name."""
+    """Every problem any check finds in `template`, grouped by check. `inline`, `unused`, `defaults` and `today` are passed to the checks they name."""
     found = {
         "references": find_reference_problems(template),
         "unused": find_unused_problems(template) if unused else [],
         "limits": find_limit_problems(template, inline=inline),
+        "values": find_value_problems(template, defaults=defaults),
+        "iam": find_iam_problems(template),
+        "lifecycle": find_lifecycle_problems(template, today=today, defaults=defaults),
         "constraints": find_constraint_problems(template, types, defaults=defaults) if types is not None else [],
         "attributes": find_attribute_problems(template, types) if types is not None else [],
         "combinations": find_combination_problems(template, types) if types is not None else [],

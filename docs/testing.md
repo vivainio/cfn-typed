@@ -188,23 +188,31 @@ mode) have none. It is also sometimes stricter than CloudFormation; see `unconst
 ## More checks on the finished template
 
 ```python
-from cfn_typed.testing import assert_attributes_exist, assert_combinations_valid, assert_nothing_unused, assert_within_limits
+from cfn_typed.testing import assert_attributes_exist, assert_combinations_valid, assert_iam_valid, assert_nothing_unused, assert_runtimes_supported, assert_values_valid, assert_within_limits
 
 def test_orders_checks() -> None:
     template = build("prod")
     assert_attributes_exist(template, acme_cfn)   # GetAtt names an attribute the type has
     assert_combinations_valid(template, acme_cfn) # exactly one of X or Y, A needs B
+    assert_values_valid(template)                 # FindInMap keys, Select indexes, parameter defaults
+    assert_runtimes_supported(template)           # no deprecated Lambda runtime
+    assert_iam_valid(template)                    # known actions, matching resources, S3 bucket vs object ARN
     assert_within_limits(template)                # 500 resources, 200 parameters, logical ID names, size
     assert_nothing_unused(template)               # no idle parameter, condition or mapping
 ```
 
 To run all of them at once, `assert_template_ok(template, acme_cfn)` calls every check and lists each problem under
-the check that found it (`[references]`, `[unused]`, `[limits]`, `[constraints]`, `[attributes]`, `[combinations]`); leave out `types`
+the check that found it (`[references]`, `[unused]`, `[limits]`, `[constraints]`, `[attributes]`, `[combinations]`, `[values]`, `[lifecycle]`, `[iam]`); leave out `types`
 to skip the two schema checks, or pass `unused=False`. `find_all_problems` returns the same as a dict.
 
 `assert_combinations_valid` reads the `RULES` table: the registry's `oneOf`, `anyOf` and `dependencies` where they say which
 properties must be set (about 150 rules on 100 resource types, 18 KB for all of them). A property is unset when it is
 `Ref: AWS::NoValue` and maybe set when only one `Fn::If` branch is, and a rule is reported only when it is broken either way.
+
+`assert_iam_valid` links each statement to the action lists in `cfn_typed.permissions` (12 services; others are left alone):
+the service of a resource type (`AWS::SQS::Queue` is `sqs`) is matched against the statement's action prefixes, and S3 object
+actions are told apart from bucket actions. `assert_runtimes_supported` uses support dates copied from cfn-lint
+(`scripts/sync-lambda-runtimes.py` refreshes them), so it goes stale like any data.
 
 `assert_attributes_exist` reads the `ATTRIBUTES` table that `cfn-typegen` writes next to `CONSTRAINTS`
 (read-only and identifier properties, `Outer.Inner` for nested ones). `assert_references_resolve` also fails when a

@@ -95,6 +95,9 @@ In `cfn_typed.testing`, not the top level. See [Testing](testing.md).
 | `assert_constraints_hold` | fail on a property value outside the schema's allowed values, pattern, length, range or item count, following intrinsics where the template decides them |
 | `assert_attributes_exist` | fail on an `Fn::GetAtt` (or `${Name.Attr}`) that asks a resource for an attribute its type lacks |
 | `assert_combinations_valid` | fail on properties set in a combination the schema rules out: not exactly one of X or Y, none of an at-least-one group, or A set without the B it needs |
+| `assert_values_valid` | fail on an `Fn::FindInMap` key the mapping lacks, an `Fn::Select` index outside its list, or a parameter default its own constraints reject |
+| `assert_runtimes_supported` | fail on a Lambda runtime AWS has deprecated, saying whether creating or updating is already blocked |
+| `assert_iam_valid` | fail on an IAM action `cfn_typed.permissions` does not know, a `Resource` of the wrong service, or an S3 object action on the bucket ARN (and the reverse) |
 | `assert_within_limits` | fail on more than 500 resources, 200 parameters, 200 outputs or mappings, a non-alphanumeric logical ID, a long description or an oversized template |
 | `assert_nothing_unused` | fail on a parameter, condition or mapping nothing refers to |
 | `assert_template_ok` | run all of the checks above in one call, with each problem listed under its check |

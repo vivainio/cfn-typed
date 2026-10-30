@@ -11,6 +11,7 @@ committed file and the code disagree. To accept an intended change, rerun the te
 import difflib
 import os
 from collections.abc import Mapping
+from datetime import date
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -19,9 +20,12 @@ from cfn_typed.attributes import find_attribute_problems
 from cfn_typed.checks import find_all_problems
 from cfn_typed.combinations import find_combination_problems
 from cfn_typed.constraints import find_constraint_problems
+from cfn_typed.iam import find_iam_problems
+from cfn_typed.lifecycle import find_lifecycle_problems
 from cfn_typed.limits import find_limit_problems
 from cfn_typed.references import find_reference_problems, find_unused_problems
 from cfn_typed.render import to_json, to_yaml
+from cfn_typed.values import find_value_problems
 
 UPDATE_ENV = "CFN_TYPED_UPDATE"
 
@@ -99,6 +103,27 @@ def assert_combinations_valid(template: Mapping[str, Any], types: ModuleType | M
         raise AssertionError("the template sets properties in a combination the schema rules out:\n" + "\n".join(f"  {p}" for p in problems))
 
 
+def assert_values_valid(template: Mapping[str, Any], *, defaults: bool = True) -> None:
+    """Fail on an `Fn::FindInMap` key the mapping lacks, an `Fn::Select` index outside its list, or a parameter default its own constraints reject. See `cfn_typed.values`."""
+    problems = find_value_problems(template, defaults=defaults)
+    if problems:
+        raise AssertionError("the template looks up or declares values that are wrong:\n" + "\n".join(f"  {p}" for p in problems))
+
+
+def assert_iam_valid(template: Mapping[str, Any]) -> None:
+    """Fail on an IAM action that does not exist, a resource of the wrong service, or an S3 bucket/object ARN mix-up. See `cfn_typed.iam`."""
+    problems = find_iam_problems(template)
+    if problems:
+        raise AssertionError("the template has IAM statements that look wrong:\n" + "\n".join(f"  {p}" for p in problems))
+
+
+def assert_runtimes_supported(template: Mapping[str, Any], *, today: date | None = None, defaults: bool = True) -> None:
+    """Fail if a Lambda function uses a runtime AWS has deprecated. See `cfn_typed.lifecycle`."""
+    problems = find_lifecycle_problems(template, today=today, defaults=defaults)
+    if problems:
+        raise AssertionError("the template uses deprecated Lambda runtimes:\n" + "\n".join(f"  {p}" for p in problems))
+
+
 def assert_within_limits(template: Mapping[str, Any], *, inline: bool = False) -> None:
     """Fail if the template breaks a CloudFormation quota or naming rule. See `cfn_typed.limits`."""
     problems = find_limit_problems(template, inline=inline)
@@ -114,13 +139,13 @@ def assert_nothing_unused(template: Mapping[str, Any]) -> None:
 
 
 def assert_template_ok(
-    template: Mapping[str, Any], types: ModuleType | None = None, *, inline: bool = False, unused: bool = True, defaults: bool = True
+    template: Mapping[str, Any], types: ModuleType | None = None, *, inline: bool = False, unused: bool = True, defaults: bool = True, today: date | None = None
 ) -> None:
     """Fail if any check finds a problem: references, unused definitions, limits and, given `types`, constraints and attributes.
 
     The one call to put in a test. Each problem is listed under the check that found it. See `cfn_typed.checks`.
     """
-    found = find_all_problems(template, types, inline=inline, unused=unused, defaults=defaults)
+    found = find_all_problems(template, types, inline=inline, unused=unused, defaults=defaults, today=today)
     if found:
         lines = [f"  [{check}] {p}" for check, problems in found.items() for p in problems]
         raise AssertionError("the template has problems:\n" + "\n".join(lines))

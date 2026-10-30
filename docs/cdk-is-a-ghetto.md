@@ -84,4 +84,4 @@ A [more balanced take](comparison.md).
 
 Read the historical inspiration: Zed Shaw's
 [Rails is a Ghetto](https://web.archive.org/web/20080107/http://www.zedshaw.com/rants/rails_is_a_ghetto.html)
-(archived copy; he later took the original down).
+(archived copy; he took the original down after the internet had a field day with it).

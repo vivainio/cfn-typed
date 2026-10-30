@@ -4,7 +4,7 @@ icon: lucide/skull
 
 # CDK is a ghetto
 
-You wanted a Lambda function and a queue. You got a program.
+You wanted a Lambda function and a queue. You got 10 million lines of Node dot JS.
 
 ## Just use Python
 

@@ -18,7 +18,7 @@ jsii.create(self.__class__, self, [scope, id, props])
 
 It does nothing. It sends a line of JSON down a pipe to a Node.js process that holds the real bucket,
 started with a heap limit of 4.069 GB (`--max-old-space-size=4069`), because Node obviously needs
-4.069 GB to generate your 6 lines of JSON. It is not even JSON-RPC. It is a bespoke RPC protocol, to
+4.069 GB to generate your 6 lines of JSON. Lucky you got a 64 bit OS now. It is not even JSON-RPC. It is a bespoke RPC protocol, to
 call a TypeScript library from Python.
 
 The wheel is 59 MB and installs as 219 MB. It's Node.js and 2000 npm deps in a

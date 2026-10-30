@@ -2,7 +2,7 @@
 icon: lucide/skull
 ---
 
-# CDK is a ghetto
+# CDK is a Ghetto
 
 You wanted a Lambda function and a queue. Maybe some tags. You got 10 million lines of Node dot JS.
 

@@ -31,7 +31,7 @@ destroys your database to start a new one. You may have lost all your customers,
 TypeScript file.
 
 The fix is open heart surgery with the `cdk refactor` command, in a terminal with production AWS access
-that operations personnel have to log into for you.
+that operations personnel have to log into for you, while your customers are breathing down your neck.
 
 Here a logical ID is a key in a dict. It moves only when you move it.
 

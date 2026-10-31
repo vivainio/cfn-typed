@@ -243,7 +243,27 @@ duration. It reads a `Definition` object, or a literal `DefinitionString` (a pla
 a definition built with other intrinsics cannot be read and is skipped. `assert_state_machine_valid(definition)` and
 `assert_state_machines_valid(template)` fail with one line per problem.
 
-Building the machine is left to you: a polling loop or a shared retry policy is a Python function that returns
-states, and the check tells you if you wired it wrong. To start from an existing machine,
+### Reuse in a big machine
+
+`cfn_typed.asl.Fragment` is a piece of graph with named open exits. Put `Exit("done")` where a state name goes, and a
+state that needs a `Next` and has none gets `Exit("next")`:
+
+- `step(name, state)` is a fragment of one state; `chain(a, b, c)` and `a.then(b)` wire `next` to the following start.
+- `frag.wire("done", "Handler")` or `frag.wire("done", other_fragment)` points every exit of that name at a state, or at
+  a fragment (whose states are added). `frag.end()` finishes at a plain `Next` with `End: true`.
+- `frag.prefixed("Tenant_")` renames every state and the transitions between them, so one pattern can be used twice
+  (names are unique across a whole machine). `frag.include(other)` adds states nothing leads to yet, such as a shared
+  failure handler that other states name.
+- `frag.map_states(fn, where="Task")` applies a policy, such as a `Catch` or a retry set, to every matching state.
+- `frag.build(Comment=...)` returns the `Definition`, and refuses open exits or a graph `find_asl_problems` rejects.
+
+Fragments never change; each method returns a new one. A polling loop or a shared retry policy is an ordinary
+function that returns a fragment: the library has no opinion on what one looks like.
+
+To refactor an existing machine, check that the new one is the old one: `assert_same_machine(built, original)` (or
+`find_machine_differences`) lists each difference and ignores key order. `to_mermaid(definition)` returns
+[Mermaid](https://mermaid.js.org) source for the graph, to review a machine of hundreds of states.
+
+To start from an existing machine,
 `cfn-typed import --asl` writes each `DefinitionString` as a `Definition` object (the output then differs
 from the original template in that property, so the exact round trip does not hold for it).

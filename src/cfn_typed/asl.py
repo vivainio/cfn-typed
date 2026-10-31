@@ -28,14 +28,20 @@ together (a polling loop, a shared retry policy) is ordinary Python on top of th
 - path fields (`InputPath`, `ResultPath`, `Variable`, ...) start with `$` (not checked under `QueryLanguage: JSONata`);
 - the definition is within the 1 MB limit.
 
+Reuse in a big machine is `Fragment`: a piece of graph with named open exits that you wire up, rename and edit in bulk,
+then `build()` into a `Definition` that is checked. `find_machine_differences` compares two definitions, which is the
+test that a refactor changed nothing, and `to_mermaid` draws one for review. Conventions such as a polling loop are
+yours to write on top; a fragment-returning function is all they need.
+
 Intrinsics (`Fn::Sub` and the like) are skipped wherever a plain value is expected, so the check also works on a
 definition inside a template. `cfn_typed.checks.find_all_problems` runs it on every `Definition` it finds.
 """
 
+import copy
 import json
 from collections import deque
-from collections.abc import Mapping, Sequence
-from typing import Any, Literal, NotRequired
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
 
@@ -496,3 +502,250 @@ def find_state_machine_problems(template: Mapping[str, Any]) -> list[str]:
         if isinstance(definition, Mapping):
             problems += [f"{logical}.{p}" for p in find_asl_problems(definition)]
     return problems
+
+
+# --- fragments ----------------------------------------------------------------------------------------------------
+
+
+class Exit(str):
+    """A placeholder for a transition that is not wired yet: put `Exit("done")` where a state name goes (`Next`, `Default`, `Choices[].Next`, `Catch[].Next`). It is a `str`, so the types accept it. A state that needs a `Next` and has none gets `Exit("next")`."""
+
+
+type _Site = tuple[str, tuple[str | int, ...]]  # a state name, and the key path of the transition inside it
+_NEEDS_NEXT = frozenset({"Task", "Pass", "Wait", "Parallel", "Map"})
+
+
+def _sites(states: Mapping[str, Any]) -> list[tuple[Exit, _Site]]:
+    """Every `Exit` in the transitions of `states` (this scope only; nested scopes are closed)."""
+    found: list[tuple[Exit, _Site]] = []
+
+    for name, state in states.items():
+        if isinstance(state.get("Next"), Exit):
+            found.append((state["Next"], (name, ("Next",))))
+        if isinstance(state.get("Default"), Exit):
+            found.append((state["Default"], (name, ("Default",))))
+        for field in ("Choices", "Catch"):
+            for i, entry in enumerate(state.get(field, [])):
+                if isinstance(entry.get("Next"), Exit):
+                    found.append((entry["Next"], (name, (field, i, "Next"))))
+    return found
+
+
+def _set(state: dict[str, Any], path: tuple[str | int, ...], value: Any) -> None:
+    holder: Any = state
+    for key in path[:-1]:
+        holder = holder[key]
+    holder[path[-1]] = value
+
+
+class Fragment:
+    """A piece of a state graph: its states, the one it starts at, and the transitions not wired yet (its *exits*, each named, see `Exit`).
+
+        poll = Fragment("Wait", {"Wait": {...,"Next": "Run"}, "Run": {..., "Next": "Check"}, "Check": {"Type": "Choice", ...,
+                        "Choices": [{..., "Next": Exit("done")}], "Default": Exit("again")}})
+        machine = chain(prepare, poll.wire("again", "Wait").prefixed("Tenant"), finish).build()
+
+    A fragment never changes: every method returns a new one. Exits of the same name are all wired together, so two
+    fragments that each leave through `Exit("failed")` share one failure handler. `build()` refuses a fragment that still
+    has exits, and one whose graph `find_asl_problems` rejects.
+    """
+
+    __slots__ = ("start", "states")
+
+    def __init__(self, start: str, states: Mapping[str, Mapping[str, Any]]) -> None:
+        self.start = start
+        self.states: dict[str, dict[str, Any]] = copy.deepcopy({k: dict(v) for k, v in states.items()})
+        for state in self.states.values():
+            if state.get("Type") in _NEEDS_NEXT and "Next" not in state and "End" not in state:
+                state["Next"] = Exit("next")
+
+    @property
+    def exits(self) -> frozenset[str]:
+        """The names of the transitions not wired yet."""
+        return frozenset(str(e) for e, _ in _sites(self.states))
+
+    def __repr__(self) -> str:
+        return f"Fragment(start={self.start!r}, states={list(self.states)}, exits={sorted(self.exits)})"
+
+    def _merged(self, other: "Fragment") -> dict[str, dict[str, Any]]:
+        clash = sorted(set(self.states) & set(other.states))
+        if clash:
+            raise ValueError(f"both fragments have states named {', '.join(map(repr, clash))}; use prefixed() on one of them")
+        return {**self.states, **other.states}
+
+    def wire(self, exit: str, target: "str | Fragment") -> "Fragment":
+        """Point every exit called `exit` at `target`: the name of a state (in the machine this ends up in), or a fragment, whose states are added and whose start is the target."""
+        sites = [site for e, site in _sites(self.states) if e == exit]
+        if not sites:
+            raise ValueError(f"no exit {exit!r}; the exits are {sorted(self.exits) or 'none'}")
+        states = self._merged(target) if isinstance(target, Fragment) else self.states
+        name = target.start if isinstance(target, Fragment) else target
+        result = Fragment(self.start, states)
+        for state_name, path in sites:
+            _set(result.states[state_name], path, name)
+        return result
+
+    def then(self, other: "Fragment") -> "Fragment":
+        """`wire("next", other)`: continue with `other` where this fragment's plain `Next` was left open."""
+        return self.wire("next", other)
+
+    def end(self, exit: str = "next") -> "Fragment":
+        """Finish the machine at every exit called `exit`, with `End: true`. Only a plain `Next` can become an end; a `Choice` rule or a `Catch` cannot, so wire those to a `Succeed` or `Fail` state."""
+        sites = [site for e, site in _sites(self.states) if e == exit]
+        if not sites:
+            raise ValueError(f"no exit {exit!r}; the exits are {sorted(self.exits) or 'none'}")
+        result = Fragment(self.start, self.states)
+        for state_name, path in sites:
+            if path != ("Next",) or result.states[state_name].get("Type") == "Choice":
+                raise ValueError(f"{state_name}: {'.'.join(map(str, path))} cannot be an End; wire it to a Succeed or Fail state")
+            del result.states[state_name]["Next"]
+            result.states[state_name]["End"] = True
+        return result
+
+    def include(self, other: "Fragment") -> "Fragment":
+        """Add `other`'s states without connecting them to anything: shared handlers that other states name, or branches a `Choice` reaches by name. `other`'s exits become this fragment's exits."""
+        return Fragment(self.start, self._merged(other))
+
+    def prefixed(self, prefix: str) -> "Fragment":
+        """The same fragment with every state name (and `StartAt`, in nested scopes too) starting with `prefix`, and the transitions between them following. A transition to a name that is not in the fragment, or an `Exit`, is left alone. This is how one pattern is used twice: state names are unique across a whole machine."""
+        states, start = _rename(self.start, self.states, lambda name: prefix + name)
+        return Fragment(start, states)
+
+    def map_states(self, fn: Callable[[dict[str, Any]], Mapping[str, Any]], *, where: str | Callable[[Mapping[str, Any]], bool] | None = None) -> "Fragment":
+        """Replace each state with `fn(state)` (`fn` gets its own copy, and returns the state to use). `where` limits it to a `Type` such as `"Task"`, or to the states a predicate accepts. Only this scope: a state inside a `Parallel` branch or a `Map` is not visited. This is how a shared `Catch` or retry policy is applied to a whole fragment."""
+        def chosen(state: Mapping[str, Any]) -> bool:
+            return where is None or (state.get("Type") == where if isinstance(where, str) else where(state))
+
+        return Fragment(self.start, {n: (fn(copy.deepcopy(s)) if chosen(s) else s) for n, s in self.states.items()})
+
+    def build(self, **top: Any) -> Definition:
+        """The finished `Definition`. `top` adds the top-level keys, such as `Comment` or `QueryLanguage`. Raises `ValueError` listing the open exits, or the problems `find_asl_problems` finds."""
+        if self.exits:
+            raise ValueError(f"unwired exits: {', '.join(sorted(self.exits))}")
+        definition = cast(Definition, {**top, "StartAt": self.start, "States": copy.deepcopy(self.states)})
+        problems = find_asl_problems(definition)
+        if problems:
+            raise ValueError("the state machine is not sound:\n" + "\n".join(f"  {p}" for p in problems))
+        return definition
+
+
+def step(name: str, state: State | Mapping[str, Any]) -> Fragment:
+    """A fragment of one state, named `name`."""
+    return Fragment(name, {name: state})
+
+
+def chain(*fragments: Fragment) -> Fragment:
+    """The fragments one after another: each one's `Exit("next")` leads to the next one's start. The exits that remain are the last one's, and any other exits left open along the way."""
+    if not fragments:
+        raise ValueError("chain() needs at least one fragment")
+    result = fragments[0]
+    for nxt in fragments[1:]:
+        result = result.then(nxt)
+    return result
+
+
+def _rename(start: str, states: Mapping[str, Mapping[str, Any]], fn: Callable[[str], str]) -> tuple[dict[str, dict[str, Any]], str]:
+    mapping = {name: fn(name) for name in states}
+
+    def target(value: Any) -> Any:
+        return mapping.get(value, value) if isinstance(value, str) and not isinstance(value, Exit) else value
+
+    out: dict[str, dict[str, Any]] = {}
+    for name, original in states.items():
+        state = copy.deepcopy(dict(original))
+        for key in ("Next", "Default"):
+            if key in state:
+                state[key] = target(state[key])
+        for field in ("Choices", "Catch"):
+            for entry in state.get(field, []):
+                if "Next" in entry:
+                    entry["Next"] = target(entry["Next"])
+        for branch in state.get("Branches", []):
+            branch["States"], branch["StartAt"] = _rename(branch["StartAt"], branch["States"], fn)
+        for key in ("ItemProcessor", "Iterator"):
+            if isinstance(state.get(key), dict):
+                state[key]["States"], state[key]["StartAt"] = _rename(state[key]["StartAt"], state[key]["States"], fn)
+        out[mapping[name]] = state
+    return out, mapping.get(start, start)
+
+
+# --- comparing and drawing ----------------------------------------------------------------------------------------
+
+
+def find_machine_differences(built: Any, expected: Any) -> list[str]:
+    """Where the two definitions differ, one readable line each, `[]` when they are the same machine. Key order does not matter; the order of a list does (`Choices` and `Retry` are evaluated in order). This is the test that a refactor into fragments changed nothing."""
+    out: list[str] = []
+    _diff(built, expected, "", out)
+    return out
+
+
+def _diff(built: Any, expected: Any, path: str, out: list[str]) -> None:
+    where = path or "(definition)"
+    if isinstance(built, Mapping) and isinstance(expected, Mapping):
+        for key in expected:
+            if key not in built:
+                out.append(f"{path}.{key}: missing, expected {_short(expected[key])}".lstrip("."))
+        for key in built:
+            if key not in expected:
+                out.append(f"{path}.{key}: not expected, got {_short(built[key])}".lstrip("."))
+        for key in built.keys() & expected.keys():
+            _diff(built[key], expected[key], f"{path}.{key}".lstrip("."), out)
+    elif isinstance(built, list) and isinstance(expected, list):
+        if len(built) != len(expected):
+            out.append(f"{where}: {len(built)} items, expected {len(expected)}")
+        for i, (b, e) in enumerate(zip(built, expected)):
+            _diff(b, e, f"{path}[{i}]", out)
+    elif built != expected or type(built) is not type(expected) and not {type(built), type(expected)} <= {int, float}:
+        out.append(f"{where}: {_short(built)}, expected {_short(expected)}")
+
+
+def _short(value: Any) -> str:
+    text = json.dumps(value, default=str)
+    return text if len(text) <= 60 else text[:57] + "..."
+
+
+def to_mermaid(definition: Mapping[str, Any]) -> str:
+    """Mermaid `stateDiagram-v2` source for `definition`: `Choice` states as diamonds, `Catch` edges labelled `catch`, a `Parallel` or `Map` as a box around its inner graph. Paste it into any Mermaid renderer to review a big machine."""
+    lines = ["stateDiagram-v2"]
+    ids: dict[str, str] = {}
+
+    def ident(name: str) -> str:
+        return ids.setdefault(name, f"s{len(ids)}")
+
+    def label(text: Any) -> str:
+        return str(text).replace(":", " ").replace('"', "'").replace("\n", " ")
+
+    def scope(sc: Mapping[str, Any], indent: str) -> None:
+        states = sc.get("States", {})
+        lines.append(f"{indent}[*] --> {ident(sc['StartAt'])}") if sc.get("StartAt") in states else None
+        for name, st in states.items():
+            sid, kind = ident(name), st.get("Type")
+            if kind == "Choice":
+                lines.append(f'{indent}state "{label(name)}" as {sid} <<choice>>')
+            elif kind in ("Parallel", "Map"):
+                lines.append(f'{indent}state "{label(name)}" as {sid} {{')
+                inner = [st["ItemProcessor"] if "ItemProcessor" in st else st.get("Iterator")] if kind == "Map" else st.get("Branches", [])
+                for i, branch in enumerate(b for b in inner if isinstance(b, Mapping)):
+                    if i:
+                        lines.append(f"{indent}    --")
+                    scope(branch, indent + "    ")
+                lines.append(f"{indent}}}")
+            else:
+                lines.append(f'{indent}state "{label(name)}" as {sid}')
+        for name, st in states.items():
+            sid = ident(name)
+            if isinstance(st.get("Next"), str):
+                lines.append(f"{indent}{sid} --> {ident(st['Next'])}")
+            if st.get("End") is True or st.get("Type") in ("Succeed", "Fail"):
+                lines.append(f"{indent}{sid} --> [*]")
+            for rule in st.get("Choices", []):
+                if isinstance(rule.get("Next"), str):
+                    lines.append(f"{indent}{sid} --> {ident(rule['Next'])}: {label(rule.get('Variable', 'if'))}")
+            if isinstance(st.get("Default"), str):
+                lines.append(f"{indent}{sid} --> {ident(st['Default'])}: default")
+            for catcher in st.get("Catch", []):
+                if isinstance(catcher.get("Next"), str):
+                    lines.append(f"{indent}{sid} --> {ident(catcher['Next'])}: catch")
+
+    scope(definition, "    ")
+    return "\n".join(lines) + "\n"

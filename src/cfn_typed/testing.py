@@ -16,7 +16,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from cfn_typed.asl import find_asl_problems, find_state_machine_problems
+from cfn_typed.asl import find_asl_problems, find_machine_differences, find_state_machine_problems
 from cfn_typed.attributes import find_attribute_problems
 from cfn_typed.checks import Rule, find_all_problems
 from cfn_typed.combinations import find_combination_problems
@@ -137,6 +137,13 @@ def assert_state_machine_valid(definition: Mapping[str, Any]) -> None:
     problems = find_asl_problems(definition)
     if problems:
         raise AssertionError("the state machine is not sound:\n" + "\n".join(f"  {p}" for p in problems))
+
+
+def assert_same_machine(built: Mapping[str, Any], expected: Mapping[str, Any]) -> None:
+    """Fail unless the two state machine definitions are the same, listing each difference. Key order is ignored. Use it to prove that a machine rebuilt from fragments equals the one it replaces. See `cfn_typed.asl.find_machine_differences`."""
+    problems = find_machine_differences(built, expected)
+    if problems:
+        raise AssertionError("the state machines differ:\n" + "\n".join(f"  {p}" for p in problems))
 
 
 def assert_state_machines_valid(template: Mapping[str, Any]) -> None:

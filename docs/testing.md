@@ -245,5 +245,5 @@ a definition built with other intrinsics cannot be read and is skipped. `assert_
 
 Building the machine is left to you: a polling loop or a shared retry policy is a Python function that returns
 states, and the check tells you if you wired it wrong. To start from an existing machine,
-`cfn-typed import --definitions` writes each `DefinitionString` as a `Definition` object (the output then differs
+`cfn-typed import --asl` writes each `DefinitionString` as a `Definition` object (the output then differs
 from the original template in that property, so the exact round trip does not hold for it).

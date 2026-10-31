@@ -161,7 +161,7 @@ def _subbed(value: Any) -> Any:
     return value
 
 
-def structure_definitions(template: Mapping[str, Any]) -> dict[str, Any]:
+def structure_state_machines(template: Mapping[str, Any]) -> dict[str, Any]:
     """A copy of `template` where each state machine's `DefinitionString` (a JSON string, or `Fn::Sub` of one) is the parsed `Definition` object, which `cfn_typed.asl` types and checks. A string that is not JSON, or a `Fn::Sub` with variables, is left alone."""
     out = dict(template)
     resources = dict(template.get("Resources", {}))
@@ -189,10 +189,10 @@ def structure_definitions(template: Mapping[str, Any]) -> dict[str, Any]:
 _SECTIONS = ("AWSTemplateFormatVersion", "Description", "Transform", "Metadata", "Parameters", "Rules", "Mappings", "Conditions", "Resources", "Outputs")
 
 
-def to_python(template: Mapping[str, Any], types: str = "cfn_types", *, definitions: bool = False) -> str:
-    """Python source of a module with `build() -> cfn.Template`, for `template`. `types` is the package `cfn-typegen` wrote. `definitions=True` writes each state machine's definition as an object (see `structure_definitions`), so the module no longer renders to exactly `template`."""
-    if definitions:
-        template = structure_definitions(template)
+def to_python(template: Mapping[str, Any], types: str = "cfn_types", *, asl: bool = False) -> str:
+    """Python source of a module with `build() -> cfn.Template`, for `template`. `types` is the package `cfn-typegen` wrote. `asl=True` writes each state machine's definition as an object (see `structure_state_machines`), so the module no longer renders to exactly `template`."""
+    if asl:
+        template = structure_state_machines(template)
     w = _Writer()
     body: list[str] = []
     for section in (*_SECTIONS, *sorted(set(template) - set(_SECTIONS))):
@@ -225,14 +225,14 @@ def to_python(template: Mapping[str, Any], types: str = "cfn_types", *, definiti
     )
 
 
-def main(path: str, out: str | None, types: str, definitions: bool = False) -> int:
+def main(path: str, out: str | None, types: str, asl: bool = False) -> int:
     """The `import` subcommand: write the module to `out`, or print it."""
     import sys
     from pathlib import Path
 
     from cfn_typed.cli import load_template
 
-    source = to_python(load_template(Path(path)), types, definitions=definitions)
+    source = to_python(load_template(Path(path)), types, asl=asl)
     if out:
         Path(out).write_text(source)
         print(f"wrote {out}", file=sys.stderr)
@@ -241,4 +241,4 @@ def main(path: str, out: str | None, types: str, definitions: bool = False) -> i
     return 0
 
 
-__all__: Sequence[str] = ["main", "module_and_factory", "structure_definitions", "to_python"]
+__all__: Sequence[str] = ["main", "module_and_factory", "structure_state_machines", "to_python"]

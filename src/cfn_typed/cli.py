@@ -307,7 +307,7 @@ def main(
         p.add_argument("template", type=Path)
         p.add_argument("-o", "--out", type=Path, help="write the module to this file instead of printing it")
         p.add_argument("--types", default="cfn_types", help="the package cfn-typegen generated (default: cfn_types)")
-        p.add_argument("--definitions", action="store_true", help="write each state machine's DefinitionString as a Definition object (typed and checked by cfn_typed.asl); the module then no longer renders to exactly the original")
+        p.add_argument("--asl", action="store_true", help="write each state machine's DefinitionString (Step Functions ASL) as a Definition object, typed and checked by cfn_typed.asl; the module then no longer renders to exactly the original")
 
         p = sub.add_parser("skill", help="print the agent skill (SKILL.md) that teaches an AI assistant to use cfn-typed, and where its directory is")
         p.add_argument("--dir", action="store_true", help="print only the skill's directory (it holds SKILL.md and resources/)")
@@ -321,7 +321,7 @@ def main(
 
         if not args.template.is_file():
             ap.error(f"no such file: {args.template}")
-        return importer.main(str(args.template), str(args.out) if args.out else None, args.types, args.definitions)
+        return importer.main(str(args.template), str(args.out) if args.out else None, args.types, args.asl)
     if standalone:
         chosen = _from_files(args.stack, ap)
         if getattr(args, "schemas", None):

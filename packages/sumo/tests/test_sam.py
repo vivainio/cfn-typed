@@ -1,8 +1,10 @@
+from typing import Any
+
+from cfn_typed import get_att, ref
+from cfn_typed.testing import assert_template_ok
+
 from cfn_typed_sumo import sam
 from cfn_typed_sumo.types import serverless
-
-from cfn_typed import get_att
-from cfn_typed.testing import assert_template_ok
 
 
 def test_sam_template_has_the_transform_and_globals() -> None:
@@ -32,3 +34,31 @@ def test_schedule_event_and_simple_table_render() -> None:
     assert tpl["Resources"]["Table"] == {"Type": "AWS::Serverless::SimpleTable"}
     assert tpl["Resources"]["Cleanup"]["Properties"]["Events"]["Nightly"]["Type"] == "Schedule"
     assert_template_ok(tpl)
+
+
+def test_function_pattern_builds_events_environment_and_policies() -> None:
+    from cfn_typed import allow
+
+    fn = sam.function(
+        handler="app.handler", code_uri="src/", timeout=30,
+        events={"Orders": sam.sqs_event(get_att("Queue", "Arn"))},
+        environment={"TABLE": ref("Table")},
+        statements=[allow("dynamodb:GetItem", get_att("Table", "Arn"))],
+        managed_policies=["AWSLambdaBasicExecutionRole"],
+    )
+    props: Any = fn["Properties"]
+    assert props["Handler"] == "app.handler" and props["Timeout"] == 30
+    assert "Runtime" not in props and "MemorySize" not in props  # left to Globals
+    assert props["Environment"] == {"Variables": {"TABLE": ref("Table")}}
+    assert props["Policies"][0] == "AWSLambdaBasicExecutionRole"
+    assert props["Policies"][1]["Statement"][0]["Action"] == ["dynamodb:GetItem"] or props["Policies"][1]["Statement"][0]["Action"] == "dynamodb:GetItem"
+    assert "Events" not in sam.function(handler="h", code_uri="s")["Properties"]
+
+
+def test_table_and_connect() -> None:
+    assert sam.table("pk")["Properties"] == {"PrimaryKey": {"Name": "pk", "Type": "String"}}
+    one = sam.connect("Worker", "Worker", "Table", ["Read", "Write"])["WorkerConnector"]["Properties"]
+    assert one == {"Source": {"Id": "Worker"}, "Destination": {"Id": "Table"}, "Permissions": ["Read", "Write"]}
+    many = sam.connect("W", "Worker", ["A", "B"])["WConnector"]["Properties"]
+    assert many["Destination"] == [{"Id": "A"}, {"Id": "B"}]
+    assert_template_ok(sam.template({"Table": sam.table("pk"), **sam.connect("W", "Worker", "Table")}))

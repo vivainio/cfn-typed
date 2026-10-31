@@ -31,6 +31,30 @@ def build() -> cfn.Template:
 and timeout are stated once. Property names are checked as for any generated type: `serverless.function(Handlr=...)`
 is an error, and so is a wrong type for `Handler`.
 
+## Functions, tables and connectors
+
+`serverless.function` takes SAM's property names. `sam.function` takes the arguments the other patterns use, and
+leaves `Runtime`, `MemorySize` and `Timeout` to `Globals` unless you pass them:
+
+```python
+worker = sam.function(
+    handler="app.handler",
+    code_uri="src/",
+    events={"Orders": sam.sqs_event(cfn.get_att("Orders", "Arn"))},
+    environment={"TABLE": cfn.ref("Table")},
+    statements=[cfn.allow("dynamodb:GetItem", cfn.get_att("Table", "Arn"))],   # one inline policy, as in grants
+    managed_policies=["AWSLambdaBasicExecutionRole"],
+)
+```
+
+| Pattern | Resource | Notes |
+|---|---|---|
+| `table(key, key_type="String")` | `SimpleTable` | one partition key |
+| `connect(name, source, destination, permissions=("Read",))` | `Connector` | SAM writes the least-privilege policy for the pair; the ID is `{name}Connector` |
+
+`connect` replaces a hand-written role statement when both ends are in the template. For anything it cannot say
+(conditions, a resource outside the template), use `statements=` instead.
+
 ## What the event builders do
 
 An event is a small typed dict. The builders exist because of two things the checker cannot do for an inline dict:

@@ -70,6 +70,7 @@ class Template(TypedDict):
     Mappings: NotRequired[dict[str, dict[str, Any]]]
     Conditions: NotRequired[dict[str, ConditionFn]]
     Transform: NotRequired[str | list[str] | dict[str, Any]]
+    Globals: NotRequired[dict[str, Any]]  # AWS SAM: defaults for every function, API and table
     Resources: Resources
     Outputs: NotRequired[dict[str, Output]]
 

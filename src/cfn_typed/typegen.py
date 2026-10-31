@@ -5,6 +5,7 @@
     cfn-typegen --out cfn_types --template template.json   # only the types a template uses
     cfn-typegen --out cfn_types --all                      # everything
     cfn-typegen --out cfn_types --no-docs AWS::SQS::Queue          # without description docstrings
+    cfn-typegen --out cfn_types --sam v1.116.0 'AWS::Serverless::*'  # AWS SAM's types, from a pinned release
     cfn-typegen search load balancer                               # find type names
     cfn-typegen --refresh --out cfn_types AWS::SQS::Queue          # re-download the schemas first
 
@@ -37,6 +38,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from cfn_typed.constraints import ITEMS, PROPS, SHORT, VALUES
+from cfn_typed.samschema import ensure_sam, load_sam
 
 SCHEMA_URL = "https://schema.cloudformation.us-east-1.amazonaws.com/CloudformationSchema.zip"
 CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "cfn-typegen" / "CloudformationSchema.zip"
@@ -127,6 +129,8 @@ class ResourceGen:
                 return union([self.ty(a, hint) for a in alts]) if alts else "Any"
         match t:
             case "string":
+                if isinstance(node.get("x-literal"), str):  # set by samschema for a field with one possible value
+                    return f"Expr[Literal[{node['x-literal']!r}]]"
                 return self.scalar(node, "Expr[str]")
             case "integer":
                 return self.scalar(node, "Expr[int]")
@@ -632,6 +636,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--literal-enums", action="store_true", help="type properties that have a fixed set of values as Literal[...]; AWS adding a value is a type error until you regenerate")
     ap.add_argument("--schemas", type=Path, default=CACHE, help="CloudformationSchema.zip (downloaded if missing)")
     ap.add_argument("--refresh", action="store_true", help="download the schemas again, picking up new AWS resources")
+    ap.add_argument("--sam", metavar="TAG", help="also generate AWS::Serverless::* from this SAM release, e.g. v1.116.0 (or `sam` in the config file)")
     args = ap.parse_args(argv)
 
     config_path = args.config or Path("cfn-typegen.toml")
@@ -650,7 +655,11 @@ def main(argv: list[str] | None = None) -> None:
     docs = not args.no_docs and config.get("docs", True)
     zip_path = ensure_schemas(args.schemas if args.schemas != CACHE or "schemas" not in config else Path(config["schemas"]), args.refresh)
     schemas = load_schemas(zip_path)
-    write(out, schemas if everything else select(schemas, patterns), docs=docs, stamp=schema_stamp(zip_path), overrides=Overrides.of(config.get("optional", []), config.get("required", []), config.get("unconstrained", [])),
+    stamp = schema_stamp(zip_path)
+    if sam := args.sam or config.get("sam"):
+        schemas += load_sam(ensure_sam(sam, args.refresh))
+        stamp += f" sam:{sam}"
+    write(out, schemas if everything else select(schemas, patterns), docs=docs, stamp=stamp, overrides=Overrides.of(config.get("optional", []), config.get("required", []), config.get("unconstrained", [])),
           constraints=config.get("constraints", True) and not args.no_constraints, literal_enums=args.literal_enums or config.get("literal_enums", False), universe=schemas)
 
 

@@ -44,6 +44,36 @@ schemas, these are the only differences in `required` across about 1,800 resourc
 
 Types named on the command line replace the file's `types`; `--out` overrides `out`.
 
+## AWS SAM types
+
+`AWS::Serverless::Function`, `Api`, `HttpApi`, `SimpleTable`, `StateMachine` and the other SAM resources are not in the
+CloudFormation registry; they belong to the SAM transform. Name a SAM release and the generator adds them:
+
+```sh
+cfn-typegen --out cfn_types --sam v1.116.0 'AWS::Serverless::*' 'AWS::SQS::Queue'
+```
+
+```toml
+sam = "v1.116.0"                  # in cfn-typegen.toml
+types = ["AWS::Serverless::*"]
+```
+
+SAM publishes one JSON schema for a whole template (`samtranslator/schema/schema.json` in
+aws/serverless-application-model). The generator downloads it for that release tag, cuts it into one schema per
+resource, and from there generation is the same as for any other type: they land in a `serverless` module, with
+`function(...)`, `simple_table(...)` and so on. The release is pinned, so a new SAM version never changes your
+generated code until you change the tag; `--refresh` downloads the file again. The header line records the tag
+(`# Schema snapshot: sha256:... sam:v1.116.0`).
+
+Differences from the registry types:
+
+- Event sources are typed by their `Type`, a `Literal` (`"SQS"`, `"HttpApi"`, ...). Build the event first, or use
+  [`cfn_typed_sumo.sam`](../patterns/sam.md): a type checker cannot pick one of about 19 event types for a dict
+  written inline in the `Events` argument.
+- SAM leaves many properties as "any CloudFormation value" (`BatchSize`, `Enabled`); those are typed `Any`.
+- There are no `CONSTRAINTS` for SAM types, and `Fn::GetAtt` is not checked for them.
+- `Connectors` and `IgnoreGlobals`, which SAM allows next to `Properties`, are not generated.
+
 ## Constraints and `Literal` enums
 
 Each module ends with a `CONSTRAINTS` table: the registry's allowed values, patterns, lengths,

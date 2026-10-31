@@ -68,6 +68,7 @@ The other patterns on these pages (load balancer, storage and so on) are still i
 | [Queue with a dead-letter queue](queue-with-dlq.md) | `{name}Queue` and `{name}DLQ` |
 | [SQS-triggered Lambda](sqs-trigger.md) | one `AWS::Lambda::EventSourceMapping` |
 | [Load balancer building blocks](load-balancer.md) | a load balancer, target group, listener or ingress rule |
+| [HTTP API with a JWT authorizer](http-api.md) | an HTTP API, a Lambda integration, a JWT authorizer, one route per route key and the invoke permission |
 | [One load balancer, several ports](web-entrypoint.md) | security group, load balancer, and a target group and listener per port |
 | [Encrypted storage](storage.md) | a KMS key, a private bucket and its policy, a table, a repository |
 | [Publishing values through SSM](publishing.md) | SSM parameters that one stack publishes and another reads |

@@ -5,13 +5,13 @@ Fan-out and EventBridge wiring, after the Solutions Constructs `sns-sqs`, `event
 send, and forgetting it is silent: the message is accepted by the sender and never arrives.
 
 ```python
---8<-- "examples/integrations.py:imports"
+--8<-- "packages/sumo/src/cfn_typed_sumo/integrations.py:imports"
 ```
 
 ## Fan-out
 
 ```python
---8<-- "examples/integrations.py:fan_out"
+--8<-- "packages/sumo/src/cfn_typed_sumo/integrations.py:fan_out"
 ```
 
 ```python
@@ -27,7 +27,7 @@ delivery is on, so a consumer reads the message itself and not an SNS envelope a
 ## EventBridge to a Lambda or a queue
 
 ```python
---8<-- "examples/integrations.py:event_rules"
+--8<-- "packages/sumo/src/cfn_typed_sumo/integrations.py:event_rules"
 ```
 
 ```python

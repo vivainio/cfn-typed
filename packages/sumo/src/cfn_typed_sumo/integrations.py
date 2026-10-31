@@ -10,12 +10,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from cfn_types import apigateway, dynamodb, ecs, elasticloadbalancingv2 as elbv2, events
-from cfn_types import iam, kinesisfirehose, lambda_, logs, route53, s3, sns, sqs
+from cfn_typed_sumo.types import apigateway, dynamodb, ecs, elasticloadbalancingv2 as elbv2, events
+from cfn_typed_sumo.types import iam, kinesisfirehose, lambda_, logs, route53, s3, sns, sqs
 
 from cfn_typed import AnyStatement, Expr, Resources, Tag, allow, arn, assume_role_policy, get_att, join, policy_document, ref, sub
 from cfn_typed.policy import ANY, arn_equals, aws, service, string_equals
-from constructs import topic_to_queue
+from cfn_typed_sumo.constructs import topic_to_queue
 from cfn_typed_sumo.patterns import queue_with_dlq
 
 # --8<-- [end:imports]

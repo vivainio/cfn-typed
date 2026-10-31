@@ -2,11 +2,12 @@
 
 The same idea as the AWS Solutions Constructs `cloudfront-s3`, `apigateway-lambda`, `apigateway-dynamodb`,
 `alb-lambda` and `route53-*` patterns: *A in front of B*, including the permission that makes the connection work.
-The static site is in `cfn-typed-sumo` (`from cfn_typed_sumo import static_site`); the rest are pulled from
-[`examples/integrations.py`](https://github.com/vivainio/cfn-typed/blob/main/examples/integrations.py).
+Every pattern here is in `cfn-typed-sumo` (`from cfn_typed_sumo import static_site`; the others in
+`cfn_typed_sumo.integrations`), and the snippets are pulled from
+[`packages/sumo/src/cfn_typed_sumo/integrations.py`](https://github.com/vivainio/cfn-typed/blob/main/packages/sumo/src/cfn_typed_sumo/integrations.py).
 
 ```python
---8<-- "examples/integrations.py:imports"
+--8<-- "packages/sumo/src/cfn_typed_sumo/integrations.py:imports"
 ```
 
 ## A static site
@@ -32,11 +33,11 @@ The static site is in `cfn-typed-sumo` (`from cfn_typed_sumo import static_site`
 ## A REST API in front of a Lambda
 
 ```python
---8<-- "examples/integrations.py:rest_api_deploy"
+--8<-- "packages/sumo/src/cfn_typed_sumo/integrations.py:rest_api_deploy"
 ```
 
 ```python
---8<-- "examples/integrations.py:api_lambda"
+--8<-- "packages/sumo/src/cfn_typed_sumo/integrations.py:api_lambda"
 ```
 
 - **Two methods.** `{proxy+}` does not match the root path, so `/` needs a method of its own.
@@ -51,7 +52,7 @@ The static site is in `cfn-typed-sumo` (`from cfn_typed_sumo import static_site`
 ## A REST API straight to DynamoDB
 
 ```python
---8<-- "examples/integrations.py:api_dynamodb"
+--8<-- "packages/sumo/src/cfn_typed_sumo/integrations.py:api_dynamodb"
 ```
 
 `GET /items/{id}` calls `GetItem` itself, with no function in between. The role may do exactly one thing, read this
@@ -62,7 +63,7 @@ renamed. For anything beyond a lookup, put a Lambda behind the API instead.
 ## A Lambda behind a load balancer
 
 ```python
---8<-- "examples/integrations.py:alb_lambda"
+--8<-- "packages/sumo/src/cfn_typed_sumo/integrations.py:alb_lambda"
 ```
 
 This one has a trap worth knowing. The target group must wait for the permission, or registering the function
@@ -74,7 +75,7 @@ choice. The listener is the one from [load balancer building blocks](load-balanc
 ## DNS names
 
 ```python
---8<-- "examples/integrations.py:route53_alias"
+--8<-- "packages/sumo/src/cfn_typed_sumo/integrations.py:route53_alias"
 ```
 
 An alias record has no TTL, costs nothing to query, and works at the zone apex, which a `CNAME` cannot. The hosted

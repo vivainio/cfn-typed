@@ -59,8 +59,8 @@ release build generate them. The snippets start from these imports:
 --8<-- "packages/sumo/src/cfn_typed_sumo/patterns.py:imports"
 ```
 
-The other patterns on these pages (load balancer, storage and so on) are still in
-`examples/` and are not yet part of the package.
+Every pattern on these pages is in the package: the [catalog](../sumo-patterns.md) lists them with
+links to the code and the resources each one creates. Only the stacks that assemble them stay in `examples/`.
 
 | Pattern | Creates |
 |---|---|

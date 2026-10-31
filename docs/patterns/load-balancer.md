@@ -9,13 +9,13 @@ These helpers are deliberately thin. They take plain arguments and return one ge
 resource, so the type checker still knows exactly what you built.
 
 ```python
---8<-- "examples/loadbalancer.py:imports"
+--8<-- "packages/sumo/src/cfn_typed_sumo/loadbalancer.py:imports"
 ```
 
 ## The load balancer
 
 ```python
---8<-- "examples/loadbalancer.py:load_balancer"
+--8<-- "packages/sumo/src/cfn_typed_sumo/loadbalancer.py:load_balancer"
 ```
 
 - **There is no `Name`.** Leaving it out lets CloudFormation choose a unique one, so a
@@ -29,7 +29,7 @@ resource, so the type checker still knows exactly what you built.
 ## The target group
 
 ```python
---8<-- "examples/loadbalancer.py:target_group"
+--8<-- "packages/sumo/src/cfn_typed_sumo/loadbalancer.py:target_group"
 ```
 
 The short `deregistration_delay` is a deliberate default. The AWS default of five
@@ -39,7 +39,7 @@ services with long-lived requests.
 ## Listeners
 
 ```python
---8<-- "examples/loadbalancer.py:listener"
+--8<-- "packages/sumo/src/cfn_typed_sumo/loadbalancer.py:listener"
 ```
 
 - **A certificate decides the protocol.** Passing `certificate_arn` makes the listener
@@ -55,7 +55,7 @@ services with long-lived requests.
 ## Letting traffic through
 
 ```python
---8<-- "examples/loadbalancer.py:allow_from"
+--8<-- "packages/sumo/src/cfn_typed_sumo/loadbalancer.py:allow_from"
 ```
 
 The instances (or tasks) behind the load balancer should accept traffic **from the load

@@ -5,13 +5,13 @@ Change streams, uploads and delivery, after the Solutions Constructs `dynamodb-s
 that is easy to get wrong.
 
 ```python
---8<-- "examples/integrations.py:imports"
+--8<-- "packages/sumo/src/cfn_typed_sumo/integrations.py:imports"
 ```
 
 ## A table stream into a Lambda
 
 ```python
---8<-- "examples/integrations.py:stream_trigger"
+--8<-- "packages/sumo/src/cfn_typed_sumo/integrations.py:stream_trigger"
 ```
 
 ```python
@@ -29,7 +29,7 @@ role = lambda_role("processor", trigger.statements)
 ## A bucket that invokes a Lambda
 
 ```python
---8<-- "examples/integrations.py:bucket_to_lambda"
+--8<-- "packages/sumo/src/cfn_typed_sumo/integrations.py:bucket_to_lambda"
 ```
 
 This is the classic circular dependency, and the reason CDK has to work around it. The bucket's notification names
@@ -47,7 +47,7 @@ turn on EventBridge notifications for the bucket and use [`event_to_lambda`](mes
 ## Firehose into a bucket
 
 ```python
---8<-- "examples/integrations.py:firehose_to_s3"
+--8<-- "packages/sumo/src/cfn_typed_sumo/integrations.py:firehose_to_s3"
 ```
 
 - **Two S3 statements, not one.** `ListBucket` applies to the bucket and `PutObject` to its objects, so a

@@ -5,11 +5,11 @@ things: it picks defaults, it creates the helper resources that always go with t
 together. A pattern does the same three things as an ordinary function, and shows its work.
 
 This page rebuilds ten of them. Every snippet is pulled from
-[`examples/constructs.py`](https://github.com/vivainio/cfn-typed/blob/main/examples/constructs.py), which is
+[`packages/sumo/src/cfn_typed_sumo/constructs.py`](https://github.com/vivainio/cfn-typed/blob/main/packages/sumo/src/cfn_typed_sumo/constructs.py), which is
 type-checked and tested like the other patterns.
 
 ```python
---8<-- "examples/constructs.py:imports"
+--8<-- "packages/sumo/src/cfn_typed_sumo/constructs.py:imports"
 ```
 
 | CDK construct | Pattern | Creates |
@@ -37,7 +37,7 @@ type-checked and tested like the other patterns.
 ## `lambda.Function`
 
 ```python
---8<-- "examples/constructs.py:function"
+--8<-- "packages/sumo/src/cfn_typed_sumo/constructs.py:function"
 ```
 
 The CDK function carries a role and, with a retention setting, a log group. Here both are in the fragment, and
@@ -48,8 +48,8 @@ the function points at the log group through `LoggingConfig`, so Lambda never cr
 ## `events.Rule` with a Lambda target
 
 ```python
---8<-- "examples/constructs.py:invoke_permission"
---8<-- "examples/constructs.py:schedule"
+--8<-- "packages/sumo/src/cfn_typed_sumo/constructs.py:invoke_permission"
+--8<-- "packages/sumo/src/cfn_typed_sumo/constructs.py:schedule"
 ```
 
 The CDK's `LambdaFunction` target adds the permission for you, and forgetting it in plain CloudFormation is a
@@ -60,7 +60,7 @@ API Gateway, with another principal.
 ## `sns.Topic` with an SQS subscription
 
 ```python
---8<-- "examples/constructs.py:topic_to_queue"
+--8<-- "packages/sumo/src/cfn_typed_sumo/constructs.py:topic_to_queue"
 ```
 
 This is the one place where the construct model and the pattern model differ. `topic.addSubscription(...)` edits the
@@ -71,7 +71,7 @@ state takes all the inputs in one call.**
 ## `ec2.Vpc`
 
 ```python
---8<-- "examples/constructs.py:vpc"
+--8<-- "packages/sumo/src/cfn_typed_sumo/constructs.py:vpc"
 ```
 
 A VPC is where the plain-Python approach pays off: the CDK needs an internal subnet-allocation engine, and here it
@@ -85,7 +85,7 @@ This one is an L3 in the CDK's own terms, and it is the most useful example beca
 patterns: the [load balancer building blocks](load-balancer.md) are reused as they are.
 
 ```python
---8<-- "examples/constructs.py:fargate_service"
+--8<-- "packages/sumo/src/cfn_typed_sumo/constructs.py:fargate_service"
 ```
 
 Used together with the VPC:
@@ -116,11 +116,11 @@ Things worth noticing:
 ## `metric.createAlarm`
 
 ```python
---8<-- "examples/constructs.py:alarm"
+--8<-- "packages/sumo/src/cfn_typed_sumo/constructs.py:alarm"
 ```
 
 ```python
---8<-- "examples/constructs.py:alarm_helpers"
+--8<-- "packages/sumo/src/cfn_typed_sumo/constructs.py:alarm_helpers"
 ```
 
 An alarm is one resource, so the value is in the defaults and in the shortcuts. `queue_backlog_alarm` and
@@ -144,7 +144,7 @@ cfn.combine(
 ### Composite alarms
 
 ```python
---8<-- "examples/constructs.py:composite_alarm"
+--8<-- "packages/sumo/src/cfn_typed_sumo/constructs.py:composite_alarm"
 ```
 
 ```python
@@ -164,7 +164,7 @@ cannot be created before them.
 Auto scaling has two flavours, and they differ in who does the arithmetic.
 
 ```python
---8<-- "examples/constructs.py:service_scaling"
+--8<-- "packages/sumo/src/cfn_typed_sumo/constructs.py:service_scaling"
 ```
 
 **Target tracking** (`scaleOnCpuUtilization`) is one policy: say what the average should be, and the service adds
@@ -196,7 +196,7 @@ the service follows whichever asks for the most tasks.
 where alarms and scaling meet, and what the CDK's `scaleOnMetric` builds:
 
 ```python
---8<-- "examples/constructs.py:queue_step_scaling"
+--8<-- "packages/sumo/src/cfn_typed_sumo/constructs.py:queue_step_scaling"
 ```
 
 ```python
@@ -214,7 +214,7 @@ queue_step_scaling("Work", cluster="WorkCluster", service="WorkService", queue="
 ## Provisioned concurrency for a Lambda
 
 ```python
---8<-- "examples/constructs.py:lambda_scaling"
+--8<-- "packages/sumo/src/cfn_typed_sumo/constructs.py:lambda_scaling"
 ```
 
 ```python
@@ -237,7 +237,7 @@ Scaling applies to an *alias*, not to the function, so a version and an alias co
 ## `table.autoScaleReadCapacity`
 
 ```python
---8<-- "examples/constructs.py:table_scaling"
+--8<-- "packages/sumo/src/cfn_typed_sumo/constructs.py:table_scaling"
 ```
 
 ```python

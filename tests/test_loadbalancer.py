@@ -5,7 +5,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "examples"))
 
-from loadbalancer import allow_from, redirect_http_to_https, web_entrypoint  # noqa: E402
+from cfn_typed_sumo.loadbalancer import allow_from, redirect_http_to_https, web_entrypoint  # noqa: E402
 
 from cfn_typed import ref  # noqa: E402
 

@@ -10,7 +10,7 @@ values under a path, and consumers read that path.
 `publish` turns a mapping into SSM parameters:
 
 ```python
---8<-- "examples/storage.py:publish"
+--8<-- "packages/sumo/src/cfn_typed_sumo/storage.py:publish"
 ```
 
 The whole producer stack, using the [storage patterns](storage.md):

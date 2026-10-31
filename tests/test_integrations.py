@@ -10,8 +10,8 @@ import cfn_types  # noqa: E402
 import pytest  # noqa: E402
 from cfn_types import dynamodb, lambda_, sns, sqs
 from cfn_types import elasticloadbalancingv2 as elbv2  # noqa: E402
-from constructs import topic_to_queue  # noqa: E402
-from integrations import (  # noqa: E402
+from cfn_typed_sumo.constructs import topic_to_queue  # noqa: E402
+from cfn_typed_sumo.integrations import (  # noqa: E402
     alias_to_distribution, alias_to_load_balancer, api_to_dynamodb, api_to_lambda, bucket_to_lambda, event_to_lambda,
     event_to_queue, fan_out, fargate_task, firehose_to_s3, lambda_behind_alb, stream_trigger,
     with_stream,

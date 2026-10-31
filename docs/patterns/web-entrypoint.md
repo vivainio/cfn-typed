@@ -5,7 +5,7 @@ listening on several ports, each forwarding to its own target group. Only the po
 changes, so the repetition belongs in a function that returns a **fragment**.
 
 ```python
---8<-- "examples/loadbalancer.py:web_entrypoint"
+--8<-- "packages/sumo/src/cfn_typed_sumo/loadbalancer.py:web_entrypoint"
 ```
 
 ```python

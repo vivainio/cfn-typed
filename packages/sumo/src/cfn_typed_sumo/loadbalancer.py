@@ -4,8 +4,8 @@
 from collections.abc import Sequence
 from typing import Literal
 
-from cfn_types import ec2
-from cfn_types import elasticloadbalancingv2 as elbv2
+from cfn_typed_sumo.types import ec2
+from cfn_typed_sumo.types import elasticloadbalancingv2 as elbv2
 
 from cfn_typed import Expr, Resources, Tag, ref
 

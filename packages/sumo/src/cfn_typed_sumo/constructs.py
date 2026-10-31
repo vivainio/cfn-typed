@@ -5,14 +5,14 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from cfn_types import applicationautoscaling as appscaling
-from cfn_types import cloudwatch, ec2, ecs, events, iam, lambda_, logs, sns, sqs
+from cfn_typed_sumo.types import applicationautoscaling as appscaling
+from cfn_typed_sumo.types import cloudwatch, ec2, ecs, events, iam, lambda_, logs, sns, sqs
 
 from cfn_typed import (
     AnyStatement, Expr, Resources, Tag, allow, assume_role_policy, cidr, get_att, get_azs, join, ref, select, sub,
 )
 from cfn_typed.policy import arn_equals, service
-from loadbalancer import allow_from, listener, load_balancer, target_group
+from cfn_typed_sumo.loadbalancer import allow_from, listener, load_balancer, target_group
 
 # --8<-- [end:imports]
 

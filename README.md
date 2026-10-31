@@ -116,6 +116,19 @@ typed arguments, and `Template["Conditions"]` is typed. See the book.
 Statements are plain dicts that the type checker checks, whether you use the builders, `Statement(...)` or a literal.
 See the book.
 
+## cfn-typed-sumo: the fat pattern library
+
+This repository also publishes `cfn-typed-sumo`, a second package on top of `cfn-typed`: the generated
+types for the core services plus ready-made patterns, with nothing to generate first.
+
+```sh
+uv add cfn-typed-sumo
+```
+
+`cfn-typed` is the core, and its API is meant to stay reliable. `cfn-typed-sumo` is deliberately fat and its
+API is volatile: patterns and names change between releases, so pin the version. See
+[the book](https://vivainio.github.io/cfn-typed/sumo/).
+
 ## Patterns
 
 Helper functions that return a resource or a small fragment (a queue with its

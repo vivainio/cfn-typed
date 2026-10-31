@@ -8,6 +8,10 @@ already generated (`cfn_typed_sumo.types`) and a set of reusable patterns
 uv add cfn-typed-sumo
 ```
 
+This is the **fat pattern library**: a lot of batteries, and a **volatile API**. Patterns and names change
+between releases, so pin the version. The core, `cfn-typed`, is the package whose API is meant to stay reliable.
+See [the book](https://vivainio.github.io/cfn-typed/sumo/).
+
 ```python
 from cfn_typed_sumo.types import sqs
 from cfn_typed_sumo import queue_with_dlq

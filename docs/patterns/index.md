@@ -36,7 +36,8 @@ a dict or any handle, via the `HasResources` protocol.
 ## Where the code lives
 
 The patterns in this book that live in a package ship as **`cfn-typed-sumo`**, a second
-package built from this repository that depends on `cfn-typed`:
+package built from this repository that depends on `cfn-typed`. It is a fat pattern library with a
+volatile API, unlike the core ([details](../sumo.md)):
 
 ```sh
 uv add cfn-typed-sumo

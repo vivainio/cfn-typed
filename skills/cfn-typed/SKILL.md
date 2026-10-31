@@ -117,11 +117,32 @@ express (`Custom::*`, `CreationPolicy`, `UpdatePolicy`, property names that are 
 comment; the file header lists them. Generate the types first with `cfn-typegen --template`. Prove the result with
 `assert build() == json.load(open("template.json"))`, run `ty check`, and review a change set before any deploy.
 
+## Step Functions state machines
+
+`cfn_typed.asl` types the Amazon States Language and checks the state graph. Use it for any
+`AWS::StepFunctions::StateMachine`, and for porting a big machine: put the machine in `Properties.Definition` as a
+`Definition` dict (not a `DefinitionString`), build it from `Fragment`s when it repeats, and prove a rewrite with
+`assert_same_machine`. The checks run in `cfn-typed check` and `assert_template_ok` as `asl`.
+
+- Typed states: `Definition`, `TaskState`, `ChoiceState`, ...; constructors `rule`, `choice`, `wait`, `retry`, `catch`.
+- `find_asl_problems(definition)` and `find_state_machine_problems(template)`: dangling `Next`/`Catch` targets, unreachable
+  states, loops with no exit, duplicate names, bad `Retry`/`Catch`/`Choice` rules.
+- `Fragment(start, states)` with `Exit("name")` for transitions not wired yet; `.wire`, `.then`, `.end`, `.include`,
+  `.prefixed`, `.renamed`, `.map_states`, `.build()`; `step`, `chain`.
+- `find_machine_differences` / `assert_same_machine` (compare two definitions), `to_mermaid`, `substituted` (wrap `${...}`
+  strings in `Fn::Sub`), `cfn-typed import --asl` (a template's `DefinitionString` becomes a `Definition`).
+
+[resources/state-machines.md](resources/state-machines.md) is the procedure for porting an existing machine, with the
+mistakes to expect. Read it before touching a machine of more than a few states. Never put a real machine's names,
+ARNs or account IDs in a committed fixture or example: invent them.
+
 ## Rules
 
 - **Never change the logical ID of a stateful resource** (table, bucket, queue, database, stream): a new ID is a
   replacement, which deletes the old resource. Set `deletion_policy="Retain"` first; use a resource import to move.
 - Do not invent property or type names: `cfn-typegen search`, or read the generated module.
 - Do not execute a change set the user has not seen.
+- **A state machine port changes nothing until it says so**: keep every state name, reproduce every quirk, and make
+  `assert_same_machine(build(), original)` pass before fixing or renaming anything.
 - Constructs are opinions: when a default does not suit the user (retention, encryption, tags), pass the argument or
   copy and change the construct, rather than working around it after rendering.

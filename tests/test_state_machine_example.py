@@ -64,3 +64,12 @@ def test_the_survey_finds_the_quirks() -> None:
 def test_the_diagram_has_every_operation() -> None:
     text = to_mermaid(original())
     assert text.startswith("stateDiagram-v2") and "Fan_Archive" in text and "<<choice>>" in text
+
+
+def test_the_skill_skeleton_runs() -> None:
+    import re
+
+    text = (Path(__file__).parent.parent / "skills" / "cfn-typed" / "resources" / "state-machines.md").read_text()
+    namespace: dict[str, Any] = {"WORKER_ARN": "arn:${AWS::Region}:example"}
+    exec(re.findall(r"```python\n(.*?)```", text, re.S)[0], namespace)
+    assert find_asl_problems(namespace["machine"]) == []

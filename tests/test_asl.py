@@ -358,3 +358,81 @@ def test_mermaid_draws_every_kind_of_edge() -> None:
     text = to_mermaid(d)
     assert text.startswith("stateDiagram-v2\n") and "<<choice>>" in text and ": catch" in text and ": default" in text
     assert "[*] -->" in text and text.count("--\n") == 1 and 'state "Fan"' in text
+
+
+# --- rule operators, renamed, constructors --------------------------------------------------------------------------
+
+from cfn_typed.asl import CHOICE_OPERATORS, catch, choice, retry, rule, wait  # noqa: E402
+
+
+def test_choice_rule_comparisons_are_checked() -> None:
+    def edit(s: Any) -> None:
+        s["Check"]["Choices"] = [
+            {"Variable": "$.a", "BooleanEqual": True, "Next": "Done"},                      # misspelled operator
+            {"Variable": "$.a", "BooleanEquals": True, "StringEquals": "x", "Next": "Done"},  # two comparisons
+            {"BooleanEquals": True, "Next": "Done"},                                        # no Variable
+            {"Variable": "$.a", "Next": "Done"},                                            # no comparison
+            {"And": [{"Variable": "$.a", "IsNull": True, "Next": "Done"}], "Next": "Done"},  # Next inside And
+        ]
+
+    text = "\n".join(problems(edit))
+    assert "'BooleanEqual' is not a Choice rule key or comparison operator" in text
+    assert "has BooleanEquals, StringEquals" in text
+    assert "BooleanEquals needs a Variable" in text
+    assert "has none" in text
+    assert "inside And, Or or Not has no Next" in text
+    assert {"StringEqualsPath", "NumericGreaterThanEquals", "TimestampLessThanPath", "IsPresent", "StringMatches"} <= CHOICE_OPERATORS
+    assert "BooleanGreaterThan" not in CHOICE_OPERATORS
+
+
+def test_jsonata_rules_are_not_checked_for_comparisons() -> None:
+    d: Any = good()
+    d["QueryLanguage"] = "JSONata"
+    d["States"]["Check"]["Choices"] = [{"Condition": "{% $states.input.done %}", "Next": "Done"}]
+    assert find_asl_problems(d) == []
+
+
+def test_renamed_with_a_mapping_or_a_function() -> None:
+    p = poll().renamed({"Run": "Execute"})
+    assert set(p.states) == {"Wait", "Execute", "Check"} and p.states["Wait"]["Next"] == "Execute"
+    assert p.states["Check"]["Default"] == "Wait" and p.exits == {"done", "failed"}
+    assert poll().renamed(str.upper).start == "WAIT"
+    with pytest.raises(ValueError, match="two states the name 'Wait'"):
+        poll().renamed({"Run": "Wait"})
+
+
+def test_renaming_the_original_is_how_a_rename_is_proved() -> None:
+    mapping = {"Fetch": "Load", "Pause": "Sleep"}
+    original: Any = good()
+    renamed: Any = Fragment(original["StartAt"], original["States"]).renamed(mapping).build()
+    assert renamed["StartAt"] == "Load" and renamed["States"]["Sleep"]["Next"] == "Load"
+    assert_same_machine(Fragment("Load", renamed["States"]).renamed({v: k for k, v in mapping.items()}).build(), original)
+
+
+def test_constructors_build_the_plain_dicts() -> None:
+    assert rule("$.ok", "BooleanEquals", True, "Done") == {"Variable": "$.ok", "BooleanEquals": True, "Next": "Done"}
+    assert choice(rule("$.ok", "IsNull", False, "A"), default="B") == {"Type": "Choice", "Choices": [{"Variable": "$.ok", "IsNull": False, "Next": "A"}], "Default": "B"}
+    assert "Default" not in choice(rule("$.ok", "IsNull", False, "A"))
+    assert wait("Go", seconds=5) == {"Type": "Wait", "Seconds": 5, "Next": "Go"}
+    assert wait(timestamp_path="$.at") == {"Type": "Wait", "TimestampPath": "$.at"}
+    assert retry("States.ALL") == {"ErrorEquals": ["States.ALL"], "IntervalSeconds": 5, "MaxAttempts": 3, "BackoffRate": 2}
+    assert str(retry("A", backoff=2)["BackoffRate"]) == "2"  # an int stays an int: 2.0 would change a rendered template
+    assert retry("A", max_delay=60)["MaxDelaySeconds"] == 60
+    assert catch("Failed") == {"ErrorEquals": ["States.ALL"], "Next": "Failed", "ResultPath": "$.error"}
+    assert catch("Failed", "Boom", result_path=None) == {"ErrorEquals": ["Boom"], "Next": "Failed"}
+
+
+def test_constructors_refuse_mistakes() -> None:
+    with pytest.raises(ValueError, match="not a Choice comparison"):
+        rule("$.x", "BooleanEqual", True, "A")
+    with pytest.raises(ValueError, match="exactly one of"):
+        wait("A")
+    with pytest.raises(ValueError, match="exactly one of"):
+        wait("A", seconds=1, seconds_path="$.s")
+
+
+def test_substituted_wraps_only_strings_with_a_placeholder() -> None:
+    from cfn_typed.asl import substituted
+
+    out = substituted({"A": "arn:${AWS::Region}:x", "B": ["plain", "${Stage}-y"], "C": {"D": 5, "E": "no placeholder"}})
+    assert out == {"A": {"Fn::Sub": "arn:${AWS::Region}:x"}, "B": ["plain", {"Fn::Sub": "${Stage}-y"}], "C": {"D": 5, "E": "no placeholder"}}

@@ -1,0 +1,483 @@
+{
+  "Comment": "Ledger runner (a made-up machine for the docs)",
+  "StartAt": "Route",
+  "States": {
+    "Route": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.action",
+          "StringEquals": "ImportInvoices",
+          "Next": "Start_ImportInvoices"
+        },
+        {
+          "Variable": "$.action",
+          "StringEquals": "ReconcileLedger",
+          "Next": "Check_ReconcileTimings"
+        },
+        {
+          "Variable": "$.action",
+          "StringEquals": "ArchiveReports",
+          "Next": "Start_ArchiveReports"
+        }
+      ],
+      "Default": "Common_Failed"
+    },
+    "Start_ImportInvoices": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:acme-ledger-${Stage}-worker",
+      "Next": "Wait_ImportStatus",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Perform_ImportFailed",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "Wait_ImportStatus": {
+      "Type": "Wait",
+      "Seconds": 30,
+      "Next": "Check_ImportStatus"
+    },
+    "Check_ImportStatus": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:acme-ledger-${Stage}-worker",
+      "Next": "Verify_ImportStatus",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Perform_ImportFailed",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "Verify_ImportStatus": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.finished",
+          "BooleanEquals": true,
+          "Next": "Finalize_ImportInvoices"
+        },
+        {
+          "Variable": "$.finished",
+          "BooleanEquals": false,
+          "Next": "Wait_ImportStatus"
+        }
+      ],
+      "Default": "Common_Failed"
+    },
+    "Finalize_ImportInvoices": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:acme-ledger-${Stage}-worker",
+      "Next": "Common_Succeeded",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Perform_ImportFailed",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "Perform_ImportFailed": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:acme-ledger-${Stage}-worker",
+      "Next": "Common_Failed"
+    },
+    "Check_ReconcileTimings": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.start_time",
+          "IsTimestamp": true,
+          "Next": "Wait_StartReconcile"
+        }
+      ],
+      "Default": "Start_Reconcile"
+    },
+    "Wait_StartReconcile": {
+      "Type": "Wait",
+      "TimestampPath": "$.start_time",
+      "Next": "Start_Reconcile"
+    },
+    "Start_Reconcile": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:acme-ledger-${Stage}-worker",
+      "Next": "Fetch_Accounts",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Perform_ReconcileFailed",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "Fetch_Accounts": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:acme-ledger-${Stage}-worker",
+      "Next": "Map_Accounts",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Perform_ImportFailed",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "Map_Accounts": {
+      "Type": "Map",
+      "ItemsPath": "$.input.accounts",
+      "MaxConcurrency": 5,
+      "ResultPath": "$.accountResults",
+      "Parameters": {
+        "Account.$": "$$.Map.Item.Value",
+        "Run.$": "$.run"
+      },
+      "Iterator": {
+        "StartAt": "Reconcile_Account",
+        "States": {
+          "Reconcile_Account": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:acme-ledger-${Stage}-worker",
+            "End": true
+          }
+        }
+      },
+      "Next": "Wait_ReconcileStaus",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Perform_ReconcileFailed",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "Wait_ReconcileStaus": {
+      "Type": "Wait",
+      "SecondsPath": "$.wait_time",
+      "Next": "Check_ReconcileStatus"
+    },
+    "Check_ReconcileStatus": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:acme-ledger-${Stage}-worker",
+      "Next": "Verify_ReconcileStatus",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Common_Failed",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "Verify_ReconcileStatus": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.continue",
+          "BooleanEquals": true,
+          "Next": "Finalize_Reconcile"
+        },
+        {
+          "Variable": "$.continue",
+          "BooleanEquals": false,
+          "Next": "Wait_ReconcileStaus"
+        }
+      ],
+      "Default": "Perform_ReconcileFailed"
+    },
+    "Finalize_Reconcile": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:acme-ledger-${Stage}-worker",
+      "Next": "Common_Succeeded",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Perform_ReconcileFailed",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "Perform_ReconcileFailed": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:acme-ledger-${Stage}-worker",
+      "Next": "Common_Failed",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Common_Failed",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "Start_ArchiveReports": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:acme-ledger-${Stage}-worker",
+      "Next": "Fan_Archive",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Perform_ArchiveFailed",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "Fan_Archive": {
+      "Type": "Parallel",
+      "Next": "Notify_Archive",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Perform_ArchiveFailed",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Branches": [
+        {
+          "StartAt": "Render_Pdf",
+          "States": {
+            "Render_Pdf": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:acme-ledger-${Stage}-worker",
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "Render_Csv",
+          "States": {
+            "Render_Csv": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:acme-ledger-${Stage}-worker",
+              "Next": "Compress_Csv"
+            },
+            "Compress_Csv": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:acme-ledger-${Stage}-worker",
+              "End": true
+            }
+          }
+        }
+      ]
+    },
+    "Notify_Archive": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:acme-ledger-${Stage}-worker",
+      "Next": "Common_Succeeded",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Perform_ArchiveFailed",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "Perform_ArchiveFailed": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:acme-ledger-${Stage}-worker",
+      "Next": "Common_Failed",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Common_Failed",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "Common_Succeeded": {
+      "Type": "Succeed"
+    },
+    "Common_Failed": {
+      "Type": "Fail"
+    }
+  }
+}

@@ -9,6 +9,9 @@ or a retry policy should look like in your workflow. Those are ordinary Python f
 from cfn_typed.asl import Definition, Exit, Fragment, chain, step, find_asl_problems, to_mermaid
 ```
 
+Porting an existing machine? [Working with state machines](patterns/state-machines.md) is a walk-through with a
+made-up example and a list of hints. This page is the reference.
+
 A state machine is a `Definition` (a plain dict) in the `Definition` property of an
 `AWS::StepFunctions::StateMachine`. Nothing here changes how it renders.
 
@@ -28,9 +31,22 @@ machine: Definition = {
 }
 ```
 
-`ChoiceRule` accepts any comparison operator (`StringEquals`, `IsTimestamp`, ... about fifty of them), and its other
-keys are checked. `Resource` is an `Expr[str]`, so an intrinsic is fine. Fields that hold arbitrary JSON
+`ChoiceRule` accepts any comparison operator (`CHOICE_OPERATORS` lists the 50-odd, `StringEquals`, `IsTimestamp`,
+`NumericGreaterThanPath`, ...). `Resource` is an `Expr[str]`, so an intrinsic is fine. Fields that hold arbitrary JSON
 (`Parameters`, `ResultSelector`, `Assign`, ...) are `Any`.
+
+### Small constructors
+
+They build the same dicts you could write by hand, and say what they are for. None has a default policy: no retry, no
+catch, no resource.
+
+| Call | Builds |
+|---|---|
+| `rule("$.done", "BooleanEquals", True, "Finish")` | a `Choice` rule; an operator that is not in `CHOICE_OPERATORS` is a `ValueError` (for `And`, `Or` and `Not` write the dict) |
+| `choice(rule(...), rule(...), default="Else")` | a `Choice` state; without `default` it fails with `States.NoChoiceMatched` |
+| `wait("Next", seconds=30)` | a `Wait`; exactly one of `seconds`, `seconds_path`, `timestamp`, `timestamp_path`; no `next` means a plain `Exit("next")` in a fragment |
+| `retry("States.ALL", interval=5, attempts=3, backoff=2, max_delay=None)` | one `Retry` entry (the list is yours: `[retry(...)]`); `backoff` stays an int, since `2.0` renders differently |
+| `catch("Failed", "States.ALL", result_path="$.error")` | one `Catch` entry; `result_path=None` drops it |
 
 ## Check the graph
 
@@ -45,6 +61,7 @@ Step Functions reports at deploy time, or not until the machine runs:
 | `Next` and `End` | a state has both or neither; a `Choice`, `Succeed` or `Fail` has either |
 | reachability | a state cannot be reached from `StartAt`, or a reachable state has no path to an end (a loop with no exit) |
 | `Retry`, `Catch` | `ErrorEquals` is empty, names a `States.` error that does not exist, has `States.ALL` with other entries, or `States.ALL` is not in the last entry (the entries after it never run); `IntervalSeconds`, `MaxAttempts`, `BackoffRate` or `MaxDelaySeconds` is out of range; either is on a state type that cannot have it |
+| `Choice` rules | a rule with no comparison or two, a comparison with no `Variable`, an operator that is not a real one (`BooleanEqual`), a key that is not part of a rule, a `Next` inside `And`, `Or` or `Not` |
 | `Wait` | not exactly one of `Seconds`, `Timestamp`, `SecondsPath`, `TimestampPath` |
 | other required keys | a `Task` without `Resource`, a `Parallel` without `Branches`, a `Map` without an `ItemProcessor`, an unknown `Type` |
 | paths | `InputPath`, `OutputPath`, `ResultPath`, `ItemsPath`, `SecondsPath`, ... or a `Choice` `Variable` that does not start with `$` (`null` is allowed where ASL allows it; not checked under `QueryLanguage: JSONata`) |
@@ -79,7 +96,8 @@ Both fail with every problem listed, one per line.
 `cfn-typed import --asl template.json -o stack.py` writes each state machine's `DefinitionString` as a `Definition`
 object instead of a 100 KB string. See [`import`](cli.md#import-start-from-an-existing-template). The same is
 `importer.structure_state_machines(template)` in code. With `Fn::Sub`, each string that contains `${` becomes its own
-`Fn::Sub`, so the substitutions still happen. The result is a different template property than the original
+`Fn::Sub`, so the substitutions still happen; `cfn_typed.asl.substituted(definition)` does the same to any definition,
+for a machine you built in Python and put in `Properties.Definition`. The result is a different template property than the original
 (`Definition`, not `DefinitionString`), so the exact round trip that `import` otherwise keeps does not hold for it.
 Check a deploy before relying on it.
 
@@ -139,6 +157,17 @@ machine = (
     .build(Comment="Prepare, then poll until ok")
 )
 ```
+
+### Renaming
+
+`frag.renamed(names)` renames every state: `names` is a mapping (a name it lacks stays as it is) or a function.
+`StartAt` and the transitions between the fragment's states follow, nested `Parallel` and `Map` scopes included, and two
+states renamed to the same name is a `ValueError`. `prefixed(p)` is `renamed(lambda n: p + n)`.
+
+A rename of a *deployed* machine is a change, not a refactor: state names are in execution history, logs, metrics and
+sometimes in the code the tasks run. To prove that a rename changes only names, apply the same mapping to the
+original and compare the two ([the walk-through](patterns/state-machines.md#step-3-fix-what-the-port-showed) does).
+A built definition goes back into a fragment with `Fragment(d["StartAt"], d["States"])`.
 
 ### Using a pattern twice
 

@@ -24,6 +24,8 @@ together (a polling loop, a shared retry policy) is ordinary Python on top of th
 - no state is unreachable, and every reachable state can reach an end (a loop with no way out is reported);
 - `Retry` and `Catch` have a non-empty `ErrorEquals` of known `States.*` names, `States.ALL` alone and last, and the
   numeric fields in range;
+- each `Choice` rule has exactly one comparison (`StringEquals`, `IsTimestamp`, ... from `CHOICE_OPERATORS`, or
+  `And`, `Or`, `Not`), a `Variable` when it is a comparison, and no keys it does not know;
 - a `Wait` has exactly one of `Seconds`, `Timestamp`, `SecondsPath` and `TimestampPath`;
 - path fields (`InputPath`, `ResultPath`, `Variable`, ...) start with `$` (not checked under `QueryLanguage: JSONata`);
 - the definition is within the 1 MB limit.
@@ -58,6 +60,17 @@ STATES_ERRORS = frozenset(
         "ResultWriterFailed", "Runtime", "TaskFailed", "Timeout",
     )
 )
+_COMPARISONS = {
+    "Boolean": ("Equals",), "Numeric": ("Equals", "GreaterThan", "GreaterThanEquals", "LessThan", "LessThanEquals"),
+    "String": ("Equals", "GreaterThan", "GreaterThanEquals", "LessThan", "LessThanEquals"),
+    "Timestamp": ("Equals", "GreaterThan", "GreaterThanEquals", "LessThan", "LessThanEquals"),
+}
+CHOICE_OPERATORS = frozenset(
+    [f"{kind}{op}{suffix}" for kind, ops in _COMPARISONS.items() for op in ops for suffix in ("", "Path")]
+    + ["IsBoolean", "IsNull", "IsNumeric", "IsPresent", "IsString", "IsTimestamp", "StringMatches"]
+)
+"""The comparison operators of a Choice rule. The `...Path` forms take a path to the value to compare with."""
+_RULE_KEYS = frozenset({"Variable", "Next", "And", "Or", "Not", "Condition", "Assign", "Output", "Comment"})
 STATE_TYPES = frozenset({"Task", "Pass", "Choice", "Wait", "Succeed", "Fail", "Parallel", "Map"})
 _PATH_FIELDS = (
     "InputPath", "OutputPath", "ResultPath", "ItemsPath", "SecondsPath", "TimestampPath", "HeartbeatSecondsPath",
@@ -461,18 +474,33 @@ def _retry_numbers(retrier: Mapping[str, Any], at: str, problems: list[str]) -> 
             problems.append(f"{at}: {field} is {value}, but must be {low}" + (f" to {high}" if high is not None else " or more"))
 
 
-def _rule(rule: Mapping[str, Any], at: str, language: str, problems: list[str]) -> None:
-    """A Choice rule: its `Variable`, and the rules nested in `And`, `Or` and `Not`."""
-    if language != "JSONata" and "Variable" in rule:
-        _path(rule["Variable"], f"{at}.Variable", problems, nullable=False)
+def _rule(rule: Mapping[str, Any], at: str, language: str, problems: list[str], *, top: bool = True) -> None:
+    """A Choice rule: its comparison and `Variable`, and the rules nested in `And`, `Or` and `Not`."""
+    if language != "JSONata":
+        comparisons = [k for k in rule if k in CHOICE_OPERATORS]
+        combinators = [k for k in ("And", "Or", "Not") if k in rule]
+        for key in rule:
+            if key not in _RULE_KEYS and key not in CHOICE_OPERATORS:
+                problems.append(f"{at}: {key!r} is not a Choice rule key or comparison operator")
+        if len(comparisons) + len(combinators) != 1:
+            found = comparisons + combinators
+            problems.append(f"{at}: a rule needs exactly one comparison or And/Or/Not, has {', '.join(found) or 'none'}")
+        if comparisons and "Variable" not in rule:
+            problems.append(f"{at}: {comparisons[0]} needs a Variable")
+        if combinators and "Variable" in rule:
+            problems.append(f"{at}: {combinators[0]} takes rules, not a Variable")
+        if not top and "Next" in rule:
+            problems.append(f"{at}: a rule inside And, Or or Not has no Next")
+        if "Variable" in rule:
+            _path(rule["Variable"], f"{at}.Variable", problems, nullable=False)
     for combinator in ("And", "Or"):
         inner = rule.get(combinator)
         if isinstance(inner, Sequence) and not isinstance(inner, str):
             for i, sub in enumerate(inner):
                 if isinstance(sub, Mapping):
-                    _rule(sub, f"{at}.{combinator}[{i}]", language, problems)
+                    _rule(sub, f"{at}.{combinator}[{i}]", language, problems, top=False)
     if isinstance(rule.get("Not"), Mapping):
-        _rule(rule["Not"], f"{at}.Not", language, problems)
+        _rule(rule["Not"], f"{at}.Not", language, problems, top=False)
 
 
 def _path(value: Any, at: str, problems: list[str], *, nullable: bool) -> None:
@@ -502,6 +530,51 @@ def find_state_machine_problems(template: Mapping[str, Any]) -> list[str]:
         if isinstance(definition, Mapping):
             problems += [f"{logical}.{p}" for p in find_asl_problems(definition)]
     return problems
+
+
+# --- small constructors -------------------------------------------------------------------------------------------
+# They build the same dicts you could write, and say what they are for. Nothing here has a default policy: no retry,
+# no catch, no resource. What a task of yours looks like is your function, on top of these.
+
+
+def rule(variable: str, operator: str, value: Any, next: str) -> ChoiceRule:
+    """A Choice rule: `rule("$.done", "BooleanEquals", True, "Finish")`. `operator` is one of `CHOICE_OPERATORS`, else `ValueError`; for `And`, `Or` and `Not` write the dict."""
+    if operator not in CHOICE_OPERATORS:
+        raise ValueError(f"{operator!r} is not a Choice comparison; one of {', '.join(sorted(CHOICE_OPERATORS))}")
+    return {"Variable": variable, operator: value, "Next": next}
+
+
+def choice(*rules: ChoiceRule, default: str | None = None) -> ChoiceState:
+    """A Choice state: the rules in order, then `default` (leave it out for a state that fails with `States.NoChoiceMatched`)."""
+    state: dict[str, Any] = {"Type": "Choice", "Choices": list(rules)}
+    if default is not None:
+        state["Default"] = default
+    return cast(ChoiceState, state)
+
+
+def wait(next: str | None = None, *, seconds: int | None = None, seconds_path: str | None = None,
+         timestamp: str | None = None, timestamp_path: str | None = None) -> WaitState:
+    """A Wait state: exactly one of `seconds`, `seconds_path`, `timestamp`, `timestamp_path`, else `ValueError`. Without `next` the state has no `Next`, which `Fragment` reads as `Exit("next")`."""
+    given = {k: v for k, v in (("Seconds", seconds), ("SecondsPath", seconds_path), ("Timestamp", timestamp), ("TimestampPath", timestamp_path)) if v is not None}
+    if len(given) != 1:
+        raise ValueError(f"a Wait needs exactly one of seconds, seconds_path, timestamp, timestamp_path; got {len(given)}")
+    return cast(WaitState, {"Type": "Wait", **given, **({"Next": next} if next is not None else {})})
+
+
+def retry(*errors: str, interval: int = 5, attempts: int = 3, backoff: float = 2, max_delay: int | None = None) -> Retrier:
+    """One `Retry` entry: `retry("States.ALL")` retries all errors after 5 s, three times, doubling the wait; `[retry(...), ...]` is the `Retry` list. `backoff=2` stays an int in the output, as `2.0` would change a rendered template."""
+    entry: dict[str, Any] = {"ErrorEquals": list(errors), "IntervalSeconds": interval, "MaxAttempts": attempts, "BackoffRate": backoff}
+    if max_delay is not None:
+        entry["MaxDelaySeconds"] = max_delay
+    return cast(Retrier, entry)
+
+
+def catch(next: str, *errors: str, result_path: str | None = "$.error") -> Catcher:
+    """One `Catch` entry: `catch("Failed")` sends every error (`States.ALL`) to `Failed` with the error in `$.error`; `result_path=None` leaves the input as it was and drops the error."""
+    entry: dict[str, Any] = {"ErrorEquals": list(errors) or ["States.ALL"], "Next": next}
+    if result_path is not None:
+        entry["ResultPath"] = result_path
+    return cast(Catcher, entry)
 
 
 # --- fragments ----------------------------------------------------------------------------------------------------
@@ -607,8 +680,15 @@ class Fragment:
         return Fragment(self.start, self._merged(other))
 
     def prefixed(self, prefix: str) -> "Fragment":
-        """The same fragment with every state name (and `StartAt`, in nested scopes too) starting with `prefix`, and the transitions between them following. A transition to a name that is not in the fragment, or an `Exit`, is left alone. This is how one pattern is used twice: state names are unique across a whole machine."""
-        states, start = _rename(self.start, self.states, lambda name: prefix + name)
+        """`renamed` with `prefix` put in front of every name. This is how one pattern is used twice: state names are unique across a whole machine."""
+        return self.renamed(lambda name: prefix + name)
+
+    def renamed(self, names: "Callable[[str], str] | Mapping[str, str]") -> "Fragment":
+        """The same fragment with every state renamed by `names`: a function, or a mapping (a name it lacks stays as it is). `StartAt` and the transitions between the fragment's states follow, nested `Parallel` and `Map` scopes included. A transition to a name that is not in the fragment, and every `Exit`, is left alone. Two states renamed to the same name is a `ValueError`."""
+        def fn(name: str) -> str:
+            return names.get(name, name) if isinstance(names, Mapping) else names(name)
+
+        states, start = _rename(self.start, self.states, fn)
         return Fragment(start, states)
 
     def map_states(self, fn: Callable[[dict[str, Any]], Mapping[str, Any]], *, where: str | Callable[[Mapping[str, Any]], bool] | None = None) -> "Fragment":
@@ -646,6 +726,9 @@ def chain(*fragments: Fragment) -> Fragment:
 
 def _rename(start: str, states: Mapping[str, Mapping[str, Any]], fn: Callable[[str], str]) -> tuple[dict[str, dict[str, Any]], str]:
     mapping = {name: fn(name) for name in states}
+    if len(set(mapping.values())) < len(mapping):
+        clash = sorted({new for new in mapping.values() if list(mapping.values()).count(new) > 1})
+        raise ValueError(f"renaming gives two states the name {', '.join(map(repr, clash))}")
 
     def target(value: Any) -> Any:
         return mapping.get(value, value) if isinstance(value, str) and not isinstance(value, Exit) else value
@@ -667,6 +750,17 @@ def _rename(start: str, states: Mapping[str, Mapping[str, Any]], fn: Callable[[s
                 state[key]["States"], state[key]["StartAt"] = _rename(state[key]["StartAt"], state[key]["States"], fn)
         out[mapping[name]] = state
     return out, mapping.get(start, start)
+
+
+def substituted(definition: Any) -> Any:
+    """`definition` with every string that has a `${` wrapped in `{"Fn::Sub": string}`, for `Properties.Definition` of a state machine whose states name `${AWS::Region}`, `${Stage}` and the like. A string with no `${` stays a plain string. `${!literal}` works as in any `Fn::Sub`. Test a deploy before relying on it: the alternative is `DefinitionSubstitutions`, which Step Functions fills in itself."""
+    if isinstance(definition, str):
+        return {"Fn::Sub": definition} if "${" in definition else definition
+    if isinstance(definition, list):
+        return [substituted(v) for v in definition]
+    if isinstance(definition, Mapping):
+        return {k: substituted(v) for k, v in definition.items()}
+    return definition
 
 
 # --- comparing and drawing ----------------------------------------------------------------------------------------

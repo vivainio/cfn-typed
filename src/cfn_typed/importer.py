@@ -19,6 +19,7 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from cfn_typed.asl import substituted
 from cfn_typed.typegen import pascal, reserved, snake
 
 _RESOURCE_KEYS = {
@@ -150,17 +151,6 @@ class _Writer:
         return f"{key}{module}.{factory}(\n" + "\n".join(args) + f"\n{pad}),"
 
 
-def _subbed(value: Any) -> Any:
-    """`value` with every string that has a `${` wrapped in `Fn::Sub`, so that an object parsed out of a `Fn::Sub` string still substitutes."""
-    if isinstance(value, str):
-        return {"Fn::Sub": value} if "${" in value else value
-    if isinstance(value, list):
-        return [_subbed(v) for v in value]
-    if isinstance(value, Mapping):
-        return {k: _subbed(v) for k, v in value.items()}
-    return value
-
-
 def structure_state_machines(template: Mapping[str, Any]) -> dict[str, Any]:
     """A copy of `template` where each state machine's `DefinitionString` (a JSON string, or `Fn::Sub` of one) is the parsed `Definition` object, which `cfn_typed.asl` types and checks. A string that is not JSON, or a `Fn::Sub` with variables, is left alone."""
     out = dict(template)
@@ -180,7 +170,7 @@ def structure_state_machines(template: Mapping[str, Any]) -> dict[str, Any]:
             continue
         if isinstance(parsed, dict):
             new = {k: v for k, v in props.items() if k != "DefinitionString"}
-            new["Definition"] = _subbed(parsed) if wrapped else parsed
+            new["Definition"] = substituted(parsed) if wrapped else parsed
             resources[logical] = {**res, "Properties": new}
     out["Resources"] = resources
     return out

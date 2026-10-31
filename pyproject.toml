@@ -44,6 +44,7 @@ dev = [
     "pyyaml>=6.0.3",
     "types-pyyaml>=6.0.12.20260906",
     "cfn-lint==1.59.0",  # pinned: a new rule release must not turn CI red
+    "aws-sam-translator==1.116.0",  # the oracle for cfn_typed_sumo.sam_expand; same release as the SAM types
 ]
 docs = ["zensical"]
 

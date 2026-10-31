@@ -110,6 +110,7 @@ def sam_schemas(doc: Schema) -> list[Schema]:
         body = _rewrite(copy.deepcopy(defs[top]), names)
         out.append({
             "typeName": type_name,
+            "x-sam": True,  # typegen adds the resource-level keys SAM allows, and leaves GetAtt unchecked
             "description": body.get("description") or resource.get("description") or "",
             "properties": body.get("properties", {}),
             "required": body.get("required", []),

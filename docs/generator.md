@@ -71,8 +71,11 @@ Differences from the registry types:
   [`cfn_typed_sumo.sam`](../patterns/sam.md): a type checker cannot pick one of about 19 event types for a dict
   written inline in the `Events` argument.
 - SAM leaves many properties as "any CloudFormation value" (`BatchSize`, `Enabled`); those are typed `Any`.
-- There are no `CONSTRAINTS` for SAM types, and `Fn::GetAtt` is not checked for them.
-- `Connectors` and `IgnoreGlobals`, which SAM allows next to `Properties`, are not generated.
+- SAM's schema has few value constraints (a handful of fixed sets such as event destination types), so
+  `assert_constraints_hold` checks little for them.
+- `Fn::GetAtt` on a SAM resource is not checked: the schema does not list what the transform makes available.
+- `Connectors` and `IgnoreGlobals`, which SAM allows next to `Properties`, are the `connectors=` and
+  `ignore_globals=` arguments of each factory.
 
 ## Constraints and `Literal` enums
 

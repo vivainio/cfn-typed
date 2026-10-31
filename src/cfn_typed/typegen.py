@@ -440,6 +440,18 @@ def resource_name(schema: Schema) -> str:
     return pascal("".join(schema["typeName"].split("::")[2:]))
 
 
+def sam_factory_body(type_name: str) -> list[str]:
+    """SAM allows `Connectors` and `IgnoreGlobals` beside `Properties`; `build` does not know them."""
+    return [
+        f"    out = build({type_name!r}, props, depends_on, deletion_policy, update_replace_policy, condition, metadata)",
+        "    if connectors is not None:",
+        "        out['Connectors'] = connectors",
+        "    if ignore_globals is not None:",
+        "        out['IgnoreGlobals'] = ignore_globals",
+        "    return out",
+    ]
+
+
 def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: str | None = None, overrides: Overrides | None = None, constraints: bool = True, literal_enums: bool = False, siblings: Collection[str] = ()) -> str:
     mod = Module(siblings)
     table: dict[str, Schema] = {}
@@ -453,8 +465,10 @@ def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: s
         type_name = schema["typeName"]
         gen = ResourceGen(mod, schema, res, docs, literal_enums)
         ov = overrides or Overrides.of()
+        sam = bool(schema.get("x-sam"))
         if constraints:
-            attributes[type_name] = attribute_names(schema)
+            if not sam:  # SAM resources have `Ref`/`GetAtt` values the schema does not list: leave them unchecked
+                attributes[type_name] = attribute_names(schema)
             if found := gen.rules(schema):
                 combinations[type_name] = found
             top = (gen.constraints(schema) or {}).get("props", {})
@@ -468,6 +482,7 @@ def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: s
             *([f"    {doc!r}"] if doc else []),
             f"    Type: Literal[{type_name!r}]",
             f"    Properties: {props_cls}" if has_required else f"    Properties: NotRequired[{props_cls}]",
+            *(["    Connectors: NotRequired[Mapping[str, Any]]", "    IgnoreGlobals: NotRequired[str | Sequence[str]]"] if sam else []),
         ]))
         mod.blocks.append("\n".join([
             f"def {factory}(",
@@ -477,9 +492,10 @@ def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: s
             "    update_replace_policy: UpdateReplacePolicy | None = None,",
             "    condition: str | None = None,",
             "    metadata: dict[str, Any] | None = None,",
+            *(["    connectors: Mapping[str, Any] | None = None,", "    ignore_globals: str | Sequence[str] | None = None,"] if sam else []),
             f"    **props: Unpack[{props_cls}],",
             f") -> {res}:",
-            f"    return build({type_name!r}, props, depends_on, deletion_policy, update_replace_policy, condition, metadata)",
+            *(sam_factory_body(type_name) if sam else [f"    return build({type_name!r}, props, depends_on, deletion_policy, update_replace_policy, condition, metadata)"]),
         ]))
     if constraints:
         mod.blocks.append(constraint_source(table))

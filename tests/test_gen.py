@@ -349,3 +349,15 @@ def test_sam_option_adds_the_serverless_module_and_records_the_release(tmp_path:
     text = (out / "serverless.py").read_text()
     assert "sam:v9.9.9" in text and "def function(" in text
     assert (out / "foo.py").exists()
+
+
+def test_sam_resources_take_connectors_and_ignore_globals_and_leave_getatt_unchecked() -> None:
+    from cfn_typed.samschema import sam_schemas
+
+    ns: dict[str, Any] = {}
+    source = gen.render_module("AWS::Serverless", sam_schemas(SAM_DOC))
+    exec(compile(source, "<sam>", "exec"), ns)
+    fn = ns["function"](Handler="h", connectors={"ToQueue": {"Properties": {}}}, ignore_globals=["Timeout"])
+    assert fn["Connectors"] == {"ToQueue": {"Properties": {}}} and fn["IgnoreGlobals"] == ["Timeout"]
+    assert "Connectors" not in ns["function"](Handler="h")
+    assert ns["ATTRIBUTES"] == {}  # no entry: GetAtt on a SAM resource is not checked

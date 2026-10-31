@@ -2,7 +2,8 @@
 
 The same idea as the AWS Solutions Constructs `cloudfront-s3`, `apigateway-lambda`, `apigateway-dynamodb`,
 `alb-lambda` and `route53-*` patterns: *A in front of B*, including the permission that makes the connection work.
-Every snippet is pulled from [`examples/integrations.py`](https://github.com/vivainio/cfn-typed/blob/main/examples/integrations.py).
+The static site is in `cfn-typed-sumo` (`from cfn_typed_sumo import static_site`); the rest are pulled from
+[`examples/integrations.py`](https://github.com/vivainio/cfn-typed/blob/main/examples/integrations.py).
 
 ```python
 --8<-- "examples/integrations.py:imports"
@@ -11,7 +12,7 @@ Every snippet is pulled from [`examples/integrations.py`](https://github.com/viv
 ## A static site
 
 ```python
---8<-- "examples/integrations.py:static_site"
+--8<-- "packages/sumo/src/cfn_typed_sumo/static_site.py:static_site"
 ```
 
 - **The bucket stays private.** CloudFront reads it with *origin access control*, and the bucket policy allows
@@ -20,6 +21,12 @@ Every snippet is pulled from [`examples/integrations.py`](https://github.com/viv
 - **`S3OriginConfig` is empty on purpose.** The property is still required for an S3 origin. The old origin access
   identity is what used to go in it, and OAC replaces that.
 - **No cycle.** The policy refers to the distribution, and the distribution to the bucket, never the other way.
+- **A domain and certificate are optional.** `domain=SiteDomain(["www.example.com"], hosted_zone_id=...)` has the
+  stack request an ACM certificate, validate it by DNS in that hosted zone, and put the names and the certificate on
+  the distribution (SNI, TLS 1.2 minimum). `SiteDomain(names, certificate_arn=...)` uses a certificate you already
+  have. Exactly one of the two is required. **CloudFront only takes certificates from us-east-1**, so a stack that
+  creates one has to be deployed there; if yours is elsewhere, make the certificate in a us-east-1 stack and pass its
+  ARN. The DNS records for the names are [the alias pattern below](#dns-names).
 - **SSE-S3, not a KMS key.** With a customer-managed key the key policy would need a statement for CloudFront too.
 
 ## A REST API in front of a Lambda

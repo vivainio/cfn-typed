@@ -10,7 +10,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from cfn_types import apigateway, cloudfront, dynamodb, ecs, elasticloadbalancingv2 as elbv2, events
+from cfn_types import apigateway, dynamodb, ecs, elasticloadbalancingv2 as elbv2, events
 from cfn_types import iam, kinesisfirehose, lambda_, logs, route53, s3, sns, sqs
 
 from cfn_typed import AnyStatement, Expr, Resources, Tag, allow, arn, assume_role_policy, get_att, join, policy_document, ref, sub
@@ -29,64 +29,6 @@ def _tags(props: Any, tags: list[Expr[Tag]] | None) -> None:
 # =====================================================================================================================
 # Web frontends
 # =====================================================================================================================
-
-
-# --8<-- [start:static_site]
-CACHING_OPTIMIZED = "658327ea-f89d-4fab-a63d-7e88639e58f6"  # the managed cache policy of the same name
-
-
-def static_site(name: str, *, default_root_object: str = "index.html", tags: list[Expr[Tag]] | None = None) -> Resources:
-    """A private bucket served by CloudFront through origin access control (OAC).
-
-    Logical IDs: `{name}Bucket`, `{name}BucketPolicy`, `{name}OAC` and `{name}Distribution`. The bucket stays
-    private: only this distribution may read it, which the policy states with `aws:SourceArn`.
-    """
-    bucket, oac, dist = f"{name}Bucket", f"{name}OAC", f"{name}Distribution"
-    bucket_props: s3.BucketProps = {
-        "PublicAccessBlockConfiguration": {
-            "BlockPublicAcls": True, "BlockPublicPolicy": True, "IgnorePublicAcls": True, "RestrictPublicBuckets": True,
-        },
-        "BucketEncryption": {"ServerSideEncryptionConfiguration": [{"ServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]},
-    }
-    dist_props: cloudfront.DistributionProps = {"DistributionConfig": {
-        "Enabled": True,
-        "HttpVersion": "http2and3",
-        "DefaultRootObject": default_root_object,
-        "Origins": [{
-            "Id": "site",
-            "DomainName": get_att(bucket, "RegionalDomainName"),
-            "OriginAccessControlId": get_att(oac, "Id"),
-            "S3OriginConfig": {},  # required for an S3 origin; empty because OAC replaces the old identity
-        }],
-        "DefaultCacheBehavior": {
-            "TargetOriginId": "site",
-            "ViewerProtocolPolicy": "redirect-to-https",
-            "CachePolicyId": CACHING_OPTIMIZED,
-            "Compress": True,
-        },
-    }}
-    _tags(bucket_props, tags)
-    _tags(dist_props, tags)
-    return {
-        bucket: s3.bucket(**bucket_props),
-        oac: cloudfront.origin_access_control(OriginAccessControlConfig={
-            "Name": sub("${AWS::StackName}-" + name),
-            "OriginAccessControlOriginType": "s3",
-            "SigningBehavior": "always",
-            "SigningProtocol": "sigv4",
-        }),
-        dist: cloudfront.distribution(**dist_props),
-        f"{name}BucketPolicy": s3.bucket_policy(
-            Bucket=ref(bucket),
-            PolicyDocument=policy_document([allow(
-                "s3:GetObject", join("", [get_att(bucket, "Arn"), "/*"]),
-                sid="AllowCloudFrontRead",
-                principal=service("cloudfront.amazonaws.com"),
-                condition=arn_equals("aws:SourceArn", sub("arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${D}", {"D": ref(dist)})),
-            )]),
-        ),
-    }
-# --8<-- [end:static_site]
 
 
 # --8<-- [start:rest_api_deploy]

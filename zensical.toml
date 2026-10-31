@@ -26,6 +26,7 @@ nav = [
     { "Queue with a dead-letter queue" = "patterns/queue-with-dlq.md" },
     { "SQS-triggered Lambda" = "patterns/sqs-trigger.md" },
     { "Load balancer building blocks" = "patterns/load-balancer.md" },
+    { "HTTP API with a JWT authorizer" = "patterns/http-api.md" },
     { "One load balancer, several ports" = "patterns/web-entrypoint.md" },
     { "Encrypted storage" = "patterns/storage.md" },
     { "Publishing values through SSM" = "patterns/publishing.md" },

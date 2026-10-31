@@ -13,9 +13,11 @@ from cfn_types import elasticloadbalancingv2 as elbv2  # noqa: E402
 from constructs import topic_to_queue  # noqa: E402
 from integrations import (  # noqa: E402
     alias_to_distribution, alias_to_load_balancer, api_to_dynamodb, api_to_lambda, bucket_to_lambda, event_to_lambda,
-    event_to_queue, fan_out, fargate_task, firehose_to_s3, lambda_behind_alb, static_site, stream_trigger,
+    event_to_queue, fan_out, fargate_task, firehose_to_s3, lambda_behind_alb, stream_trigger,
     with_stream,
 )
+
+from cfn_typed_sumo import static_site  # noqa: E402
 
 from cfn_typed import Resources, combine, get_att, ref  # noqa: E402
 from cfn_typed.testing import assert_references_resolve, assert_template_ok  # noqa: E402

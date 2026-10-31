@@ -120,7 +120,7 @@ See the book.
 
 Helper functions that return a resource or a small fragment (a queue with its
 dead-letter queue, a Lambda role, ...) are documented in the book, with working
-code in `examples/patterns.py`. Build it locally with `uv run zensical serve`.
+code in `packages/sumo/src/cfn_typed_sumo/patterns.py`. Build it locally with `uv run zensical serve`.
 
 ## Type checking notes
 

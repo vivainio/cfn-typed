@@ -1,9 +1,4 @@
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "examples"))
-
-from patterns import COMPANY_RULES, CompanyTags, SomeCompanyTags, lambda_role, queue_with_dlq, sqs_event_source, tagged, untagged  # noqa: E402
+from cfn_typed_sumo.patterns import COMPANY_RULES, CompanyTags, SomeCompanyTags, lambda_role, queue_with_dlq, sqs_event_source, tagged, untagged  # noqa: E402
 
 import pytest  # noqa: E402
 

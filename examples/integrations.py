@@ -16,7 +16,7 @@ from cfn_types import iam, kinesisfirehose, lambda_, logs, route53, s3, sns, sqs
 from cfn_typed import AnyStatement, Expr, Resources, Tag, allow, arn, assume_role_policy, get_att, join, policy_document, ref, sub
 from cfn_typed.policy import ANY, arn_equals, aws, service, string_equals
 from constructs import topic_to_queue
-from patterns import queue_with_dlq
+from cfn_typed_sumo.patterns import queue_with_dlq
 
 # --8<-- [end:imports]
 
@@ -155,7 +155,7 @@ def api_to_dynamodb(name: str, table_logical: str, *, key: str = "pk", stage: st
         api: rest,
         role: iam.role(
             AssumeRolePolicyDocument=assume_role_policy(service("apigateway.amazonaws.com")),
-            Policies=[iam.RolePolicy(
+            Policies=[iam.RolePolicyProperty(
                 PolicyName=f"{name}-read",
                 PolicyDocument=policy_document([allow("dynamodb:GetItem", get_att(table_logical, "Arn"))]),
             )],
@@ -454,7 +454,7 @@ def firehose_to_s3(
                 service("firehose.amazonaws.com"),
                 condition=string_equals("sts:ExternalId", ref("AWS::AccountId")),
             ),
-            Policies=[iam.RolePolicy(
+            Policies=[iam.RolePolicyProperty(
                 PolicyName=f"{name}-deliver",
                 PolicyDocument=policy_document([
                     allow(["s3:GetBucketLocation", "s3:ListBucket", "s3:ListBucketMultipartUploads"], bucket_arn),
@@ -574,7 +574,7 @@ def fargate_task(
     }
     role_props: iam.RoleProps = {"AssumeRolePolicyDocument": assume_role_policy(service("ecs-tasks.amazonaws.com"))}
     if task_statements:
-        role_props["Policies"] = [iam.RolePolicy(PolicyName=f"{name}-task", PolicyDocument=policy_document(task_statements))]
+        role_props["Policies"] = [iam.RolePolicyProperty(PolicyName=f"{name}-task", PolicyDocument=policy_document(task_statements))]
     cluster_props: ecs.ClusterProps = {"ClusterSettings": [{"Name": "containerInsights", "Value": "enabled"}]}
     _tags(task_props, tags)
     _tags(cluster_props, tags)

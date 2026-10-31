@@ -105,7 +105,7 @@ def grants_page() -> str:
 
 
 def main() -> None:
-    wanted = [t for t in (ROOT / "examples" / "types.txt").read_text().split("\n") if t and not t.startswith("#")]
+    wanted = typegen.load_config(ROOT / "examples" / "cfn-typegen.toml")["types"]
     schemas = typegen.select(typegen.load_schemas(typegen.ensure_schemas(typegen.CACHE)), wanted)
     OUT.mkdir(parents=True, exist_ok=True)
     index = ["# Reference", "", "The Python that `cfn-typegen` writes for each resource, generated from the CloudFormation registry schemas when the book is built.", ""]

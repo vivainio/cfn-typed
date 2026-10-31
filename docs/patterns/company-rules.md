@@ -5,7 +5,7 @@ has rules that are not about validity: buckets are encrypted, queues have a dead
 They are one more layer on the same checks, and run in the same call.
 
 ```python
---8<-- "examples/patterns.py:company_rules"
+--8<-- "packages/sumo/src/cfn_typed_sumo/patterns.py:company_rules"
 ```
 
 A **rule** is a function from the finished template to a list of problems, one readable line each. That is the shape

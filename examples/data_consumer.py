@@ -22,7 +22,7 @@ def build() -> cfn.Template:
             "ReaderRole": iam.role(
                 RoleName="data-platform-reader",  # matches the producer's allowed-principals pattern
                 AssumeRolePolicyDocument=cfn.assume_role_policy(service("lambda.amazonaws.com")),
-                Policies=[iam.RolePolicy(PolicyName="read-data", PolicyDocument=cfn.policy_document(statements))],
+                Policies=[iam.RolePolicyProperty(PolicyName="read-data", PolicyDocument=cfn.policy_document(statements))],
             ),
         },
     }

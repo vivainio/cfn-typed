@@ -32,8 +32,12 @@ yaml = [
     "pyyaml>=6",
 ]
 
+[tool.uv.workspace]
+members = ["packages/*"]
+
 [dependency-groups]
 dev = [
+    "cfn-typed-sumo",
     "ty",
     "pytest",
     "pyyaml>=6.0.3",
@@ -41,6 +45,9 @@ dev = [
     "cfn-lint==1.59.0",  # pinned: a new rule release must not turn CI red
 ]
 docs = ["zensical"]
+
+[tool.uv.sources]
+cfn-typed-sumo = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
@@ -51,7 +58,7 @@ packages = ["src/cfn_typed"]
 
 [tool.ty.environment]
 python-version = "3.14"
-root = ["src", "examples", "."]
+root = ["src", "packages/sumo/src", "examples", "."]
 
 [tool.ty.src]
-include = ["src", "examples", "tests"]
+include = ["src", "packages/sumo/src", "packages/sumo/tests", "examples", "tests"]

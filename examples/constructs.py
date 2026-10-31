@@ -66,7 +66,7 @@ def function(
         "LoggingConfig": {"LogGroup": ref(logs_id)},
     }
     if statements:
-        role_props["Policies"] = [iam.RolePolicy(
+        role_props["Policies"] = [iam.RolePolicyProperty(
             PolicyName=f"{name}-inline", PolicyDocument={"Version": "2012-10-17", "Statement": list(statements)},
         )]
     if environment:
@@ -265,7 +265,7 @@ def fargate_service(
     trust = assume_role_policy(service("ecs-tasks.amazonaws.com"))
     role_props: iam.RoleProps = {"AssumeRolePolicyDocument": trust}
     if statements:
-        role_props["Policies"] = [iam.RolePolicy(
+        role_props["Policies"] = [iam.RolePolicyProperty(
             PolicyName=f"{name}-task", PolicyDocument={"Version": "2012-10-17", "Statement": list(statements)},
         )]
     container: ecs.TaskDefinitionContainerDefinition = {

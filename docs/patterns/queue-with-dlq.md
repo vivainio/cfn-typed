@@ -5,7 +5,7 @@ redrive policy wired between them. It returns a small handle (`QueueWithDlq`) ho
 the logical IDs, ready-made references, and the `resources` to put in the template.
 
 ```python
---8<-- "examples/patterns.py:queue_with_dlq"
+--8<-- "packages/sumo/src/cfn_typed_sumo/patterns.py:queue_with_dlq"
 ```
 
 ```python

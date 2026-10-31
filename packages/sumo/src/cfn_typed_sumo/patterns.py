@@ -6,7 +6,7 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import asdict, dataclass, fields
 from typing import Any, Literal, TypedDict
 
-from cfn_types import iam, lambda_, sqs
+from cfn_typed_sumo.types import iam, lambda_, sqs
 
 from cfn_typed import AnyResource, AnyStatement, Expr, Resources, Tag, allow, arn, assume_role_policy, get_att, policy_document, ref
 from cfn_typed.policy import service
@@ -23,7 +23,7 @@ def lambda_role(name_prefix: str, extra: Sequence[AnyStatement]) -> iam.Role:
     log_arn = arn.log_group(f"/aws/lambda/{name_prefix}*", streams=True)
     return iam.role(
         AssumeRolePolicyDocument=assume_role_policy(service("lambda.amazonaws.com")),
-        Policies=[iam.RolePolicy(
+        Policies=[iam.RolePolicyProperty(
             PolicyName=f"{name_prefix}-lambda",
             PolicyDocument=policy_document([
                 allow(["logs:CreateLogStream", "logs:CreateLogGroup", "logs:PutLogEvents"], [log_arn]),

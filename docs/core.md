@@ -110,4 +110,4 @@ In `cfn_typed.testing`, not the top level. See [Testing](testing.md).
 | `assert_iam_valid` | fail on an IAM action `cfn_typed.permissions` does not know, a `Resource` of the wrong service, or an S3 object action on the bucket ARN (and the reverse) |
 | `assert_within_limits` | fail on more than 500 resources, 200 parameters, 200 outputs or mappings, a non-alphanumeric logical ID, a long description or an oversized template |
 | `assert_nothing_unused` | fail on a parameter, condition or mapping nothing refers to |
-| `assert_template_ok` | run all of the checks above in one call, with each problem listed under its check |
+| `assert_template_ok` | run all of the checks above in one call, with each problem listed under its check; `rules=` adds a company's own [rules](patterns/company-rules.md), written with `cfn_typed.rules` (`require`, `forbid`, `each`) and `cfn_typed.query` (`resources_of`, `prop`) |

@@ -10,12 +10,13 @@ The result maps the name of each check that found something to its problems, one
 - `values`: `Fn::FindInMap` keys, `Fn::Select` indexes and parameter defaults (`cfn_typed.values`);
 - `iam`: unknown actions, resources of the wrong service, S3 bucket-versus-object ARNs (`cfn_typed.iam`);
 - `lifecycle`: Lambda runtimes past their deprecation date (`cfn_typed.lifecycle`; `today` is for tests);
+- any `rules` the company passes (`cfn_typed.query` helps to write them), each under its function name;
 - `constraints`, `attributes` and `combinations`: values, `Fn::GetAtt` names and "one of / needs" property combinations
   against the registry schemas (`cfn_typed.constraints`, `cfn_typed.attributes`, `cfn_typed.combinations`). They need `types`, the package `cfn-typegen` generated (a hand-made mapping means something different to each, so
   use the two functions directly for that), and are left out without it.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from types import ModuleType
 from typing import Any
@@ -29,6 +30,9 @@ from cfn_typed.limits import find_limit_problems
 from cfn_typed.references import find_reference_problems, find_unused_problems
 from cfn_typed.values import find_value_problems
 
+type Rule = Callable[[Mapping[str, Any]], list[str]]
+"""A company's own check: the template in, one readable line per problem out."""
+
 
 def find_all_problems(
     template: Mapping[str, Any],
@@ -38,8 +42,9 @@ def find_all_problems(
     unused: bool = True,
     defaults: bool = True,
     today: date | None = None,
+    rules: Sequence[Rule] = (),
 ) -> dict[str, list[str]]:
-    """Every problem any check finds in `template`, grouped by check. `inline`, `unused`, `defaults` and `today` are passed to the checks they name."""
+    """Every problem any check finds in `template`, grouped by check. `inline`, `unused`, `defaults` and `today` are passed to the checks they name. Each of `rules` is a check of the company's own and reports under its function name."""
     found = {
         "references": find_reference_problems(template),
         "unused": find_unused_problems(template) if unused else [],
@@ -51,4 +56,6 @@ def find_all_problems(
         "attributes": find_attribute_problems(template, types) if types is not None else [],
         "combinations": find_combination_problems(template, types) if types is not None else [],
     }
+    for rule in rules:
+        found[getattr(rule, "__name__", repr(rule))] = rule(template)
     return {check: problems for check, problems in found.items() if problems}

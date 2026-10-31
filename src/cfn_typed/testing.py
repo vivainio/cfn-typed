@@ -10,14 +10,14 @@ committed file and the code disagree. To accept an intended change, rerun the te
 
 import difflib
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import date
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
 from cfn_typed.attributes import find_attribute_problems
-from cfn_typed.checks import find_all_problems
+from cfn_typed.checks import Rule, find_all_problems
 from cfn_typed.combinations import find_combination_problems
 from cfn_typed.constraints import find_constraint_problems
 from cfn_typed.iam import find_iam_problems
@@ -139,13 +139,15 @@ def assert_nothing_unused(template: Mapping[str, Any]) -> None:
 
 
 def assert_template_ok(
-    template: Mapping[str, Any], types: ModuleType | None = None, *, inline: bool = False, unused: bool = True, defaults: bool = True, today: date | None = None
+    template: Mapping[str, Any], types: ModuleType | None = None, *, inline: bool = False, unused: bool = True, defaults: bool = True, today: date | None = None,
+    rules: Sequence[Rule] = (),
 ) -> None:
     """Fail if any check finds a problem: references, unused definitions, limits and, given `types`, constraints and attributes.
 
-    The one call to put in a test. Each problem is listed under the check that found it. See `cfn_typed.checks`.
+    The one call to put in a test. `rules` adds the company's own checks (see `cfn_typed.query`). Each problem is listed under the check that found it. See `cfn_typed.checks`.
     """
-    found = find_all_problems(template, types, inline=inline, unused=unused, defaults=defaults, today=today)
+    found = find_all_problems(template, types, inline=inline, unused=unused, defaults=defaults, today=today, rules=rules)
     if found:
         lines = [f"  [{check}] {p}" for check, problems in found.items() for p in problems]
         raise AssertionError("the template has problems:\n" + "\n".join(lines))
+

@@ -33,6 +33,7 @@ nav = [
     { "CDK L2 constructs as patterns" = "patterns/cdk-l2.md" },
     { "Serverless Framework in a few lines" = "patterns/serverless.md" },
     { "Mandatory tags" = "patterns/mandatory-tags.md" },
+    { "Company rules" = "patterns/company-rules.md" },
     { "Composing fragments" = "patterns/composing.md" },
     { "A complete stack" = "patterns/complete-stack.md" },
   ] },

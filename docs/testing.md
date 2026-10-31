@@ -202,7 +202,7 @@ def test_orders_checks() -> None:
 ```
 
 To run all of them at once, `assert_template_ok(template, acme_cfn)` calls every check and lists each problem under
-the check that found it (`[references]`, `[unused]`, `[limits]`, `[constraints]`, `[attributes]`, `[combinations]`, `[values]`, `[lifecycle]`, `[iam]`); leave out `types`
+the check that found it (`[references]`, `[unused]`, `[limits]`, `[constraints]`, `[attributes]`, `[combinations]`, `[values]`, `[lifecycle]`, `[iam]`, and one per company rule); leave out `types`
 to skip the two schema checks, or pass `unused=False`. `find_all_problems` returns the same as a dict.
 
 `assert_combinations_valid` reads the `RULES` table: the registry's `oneOf`, `anyOf` and `dependencies` where they say which
@@ -217,6 +217,9 @@ actions are told apart from bucket actions. `assert_runtimes_supported` uses sup
 `assert_attributes_exist` reads the `ATTRIBUTES` table that `cfn-typegen` writes next to `CONSTRAINTS`
 (read-only and identifier properties, `Outer.Inner` for nested ones). `assert_references_resolve` also fails when a
 resource without a `Condition` refers to one that has it, unless an `Fn::If` or an `Fn::And` condition guards the reference.
+
+A company's own rules go in the same call: `assert_template_ok(template, acme_cfn, rules=COMPANY_RULES)`. See
+[Company rules](patterns/company-rules.md).
 
 ## What it does and does not check
 

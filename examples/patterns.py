@@ -2,14 +2,17 @@
 
 # --8<-- [start:imports]
 import re
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import asdict, dataclass, fields
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
 from cfn_types import iam, lambda_, sqs
 
 from cfn_typed import AnyResource, AnyStatement, Expr, Resources, Tag, allow, arn, assume_role_policy, get_att, policy_document, ref
 from cfn_typed.policy import service
+from cfn_typed.checks import Rule
+from cfn_typed.query import prop, resources_of
+from cfn_typed.rules import each, forbid, require
 
 # --8<-- [end:imports]
 
@@ -146,3 +149,49 @@ def untagged(resources: Resources, *, taggable: Collection[str] = TAGGABLE) -> l
         if r["Type"] in taggable and REQUIRED - {t["Key"] for t in r.get("Properties", {}).get("Tags", [])}
     ]
 # --8<-- [end:company_tags]
+
+
+# --8<-- [start:company_rules]
+def as_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else [] if value is None else [value]
+
+
+@each("AWS::IAM::Role")
+def no_admin_policies(logical_id: str, role: Mapping[str, Any]) -> list[str]:
+    """No inline policy allows every action on every resource. Several problems per resource are fine."""
+    return [
+        f"Policies.{i} allows * on *"
+        for i, policy in enumerate(prop(role, "Policies") or [])
+        for st in as_list(policy["PolicyDocument"]["Statement"])
+        if st["Effect"] == "Allow" and "*" in as_list(st.get("Action")) and "*" in as_list(st.get("Resource"))
+    ]
+
+
+@each("AWS::SQS::Queue")
+def queue_names_say_what_they_are(logical_id: str, queue: Mapping[str, Any]) -> str | None:
+    """Per-resource logic that `require` cannot express: the logical ID ends in Queue or DLQ."""
+    return None if logical_id.endswith(("Queue", "DLQ")) else "name ends in neither Queue nor DLQ"
+
+
+def queues_have_a_dead_letter_queue(template: Mapping[str, Any]) -> list[str]:
+    """Logic across resources: every queue that is not itself a dead-letter queue redrives to one."""
+    queues = resources_of(template, "AWS::SQS::Queue")
+    targets = {
+        t["Fn::GetAtt"][0]
+        for q in queues.values()
+        if isinstance(t := prop(q, "RedrivePolicy.deadLetterTargetArn"), dict) and "Fn::GetAtt" in t
+    }
+    return [f"{k}: no RedrivePolicy" for k, q in queues.items() if k not in targets and prop(q, "RedrivePolicy") is None]
+
+
+COMPANY_RULES: list[Rule] = [
+    require("AWS::S3::Bucket", "BucketEncryption"),
+    *(require("AWS::S3::Bucket", f"PublicAccessBlockConfiguration.{s}", equals=True)
+      for s in ("BlockPublicAcls", "BlockPublicPolicy", "IgnorePublicAcls", "RestrictPublicBuckets")),
+    forbid("AWS::S3::Bucket", "AccessControl", one_of=["PublicRead", "PublicReadWrite"]),
+    require("AWS::Logs::LogGroup", "RetentionInDays", at_least=30),
+    no_admin_policies,
+    queue_names_say_what_they_are,
+    queues_have_a_dead_letter_queue,
+]
+# --8<-- [end:company_rules]

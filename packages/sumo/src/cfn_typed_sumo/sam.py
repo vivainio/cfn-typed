@@ -68,6 +68,11 @@ def event_bridge_event(pattern: Mapping[str, Any]) -> serverless.FunctionEventBr
     return {"Type": "EventBridgeRule", "Properties": {"Pattern": pattern}}
 
 
+def api_event(path: str, method: str = "GET") -> serverless.FunctionApiEvent:
+    """An `Api` event: a method on a REST API (API Gateway v1). Prefer `http_api_event` unless you need REST features."""
+    return {"Type": "Api", "Properties": {"Path": path, "Method": method}}
+
+
 def http_api_event(path: str, method: str = "ANY", *, api_id: Expr[str] | None = None) -> serverless.FunctionHttpApiEvent:
     """An `HttpApi` event: a route on the implicit HTTP API, or on `api_id` when given."""
     props: serverless.FunctionHttpApiEventProperties = {"Path": path, "Method": method}
@@ -138,6 +143,6 @@ def connect(
 
 
 __all__ = [
-    "SAM_TRANSFORM", "connect", "event_bridge_event", "expand", "function", "http_api_event", "schedule_event",
+    "SAM_TRANSFORM", "api_event", "connect", "event_bridge_event", "expand", "function", "http_api_event", "schedule_event",
     "sns_event", "sqs_event", "stream_event", "table", "template",
 ]

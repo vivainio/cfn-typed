@@ -51,8 +51,8 @@ what you need and change it.
 
 The package also ships the generated types its patterns use as a public module,
 `cfn_typed_sumo.types`. They are generated from `packages/sumo/cfn-typegen.toml`, which lists
-the resource types the patterns need plus the core services (IAM, Lambda, SQS, SNS, S3, KMS,
-DynamoDB, Logs, Events, SSM, CloudWatch); the repository does not contain them, and CI and the
+the resource types the patterns need plus the core and everyday services (IAM, Lambda, SQS, SNS, S3,
+KMS, DynamoDB, EC2, ECS, both API Gateways, CloudFront, RDS and so on, but not all of AWS); the repository does not contain them, and CI and the
 release build generate them. The snippets start from these imports:
 
 ```python

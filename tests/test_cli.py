@@ -1,8 +1,10 @@
 import json
+import re
+from pathlib import Path
 
 import pytest
 
-from cfn_typed.cli import main
+from cfn_typed.cli import main, skill_dir
 
 
 def good() -> dict:
@@ -136,3 +138,12 @@ def test_skill_prints_the_agent_skill(capsys) -> None:
     assert main(argv=["skill"], prog="cfn-typed") == 0
     out = capsys.readouterr().out
     assert out.startswith("---\nname: cfn-typed\n") and "cfn-typed import" in out
+    assert f"Skill directory: `{skill_dir()}`" in out
+
+
+def test_skill_dir_holds_the_linked_resources(capsys) -> None:
+    assert main(argv=["skill", "--dir"], prog="cfn-typed") == 0
+    directory = Path(capsys.readouterr().out.strip())
+    assert (directory / "SKILL.md").is_file()
+    links = re.findall(r"\]\((resources/[^)#]+)", (directory / "SKILL.md").read_text())
+    assert links and all((directory / link).is_file() for link in links)

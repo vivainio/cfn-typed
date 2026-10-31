@@ -12,6 +12,10 @@ hashed logical IDs, no runtime beyond Python 3.14+.
 
 Run `cfn-typed --help` and `cfn-typegen --help` for the exact options; they are the source of truth.
 
+Resource files live in this skill's directory (`cfn-typed skill` prints where; `cfn-typed skill --dir` prints just the path):
+[resources/serverless-ids.md](resources/serverless-ids.md) (the logical IDs the Serverless Framework generates, and which
+ones always differ) and [resources/change-set.md](resources/change-set.md) (reviewing a change set before executing it).
+
 ## Setup
 
 ```sh

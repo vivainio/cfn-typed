@@ -59,7 +59,7 @@ build-backend = "hatchling.build"
 packages = ["src/cfn_typed"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"skills/cfn-typed/SKILL.md" = "cfn_typed/SKILL.md"  # `cfn-typed skill` prints it
+"skills/cfn-typed" = "cfn_typed/skill"  # `cfn-typed skill` prints SKILL.md and says where the directory is
 
 [tool.ty.environment]
 python-version = "3.14"

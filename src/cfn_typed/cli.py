@@ -83,14 +83,20 @@ def load_template(path: Path) -> dict[str, Any]:
     return yaml.load(text, Loader=Loader)  # noqa: S506 (a SafeLoader subclass)
 
 
-def skill_text() -> str:
-    """The agent skill: packaged as `cfn_typed/SKILL.md`, or read from `skills/cfn-typed/` in a source checkout."""
+def skill_dir() -> Path:
+    """The agent skill's directory: `cfn_typed/skill` in an installed package, `skills/cfn-typed` in a source checkout."""
     from importlib.resources import files
 
-    packaged = files("cfn_typed") / "SKILL.md"
-    if packaged.is_file():
-        return packaged.read_text(encoding="utf-8")
-    return (Path(__file__).resolve().parents[2] / "skills" / "cfn-typed" / "SKILL.md").read_text(encoding="utf-8")
+    packaged = Path(str(files("cfn_typed") / "skill"))
+    return packaged if (packaged / "SKILL.md").is_file() else Path(__file__).resolve().parents[2] / "skills" / "cfn-typed"
+
+
+def skill_text() -> str:
+    """SKILL.md with a line after the frontmatter that says where the skill's directory is, so its relative links (`resources/...`) can be followed."""
+    text = (skill_dir() / "SKILL.md").read_text(encoding="utf-8")
+    end = text.find("\n---\n", 3)
+    note = f"\n> Skill directory: `{skill_dir()}`. Files linked as `resources/...` below are in it.\n"
+    return text if end < 0 else text[: end + 5] + note + text[end + 5 :]
 
 
 def _from_files(paths: Sequence[str], ap: argparse.ArgumentParser) -> dict[str, Builder]:
@@ -302,11 +308,12 @@ def main(
         p.add_argument("-o", "--out", type=Path, help="write the module to this file instead of printing it")
         p.add_argument("--types", default="cfn_types", help="the package cfn-typegen generated (default: cfn_types)")
 
-        sub.add_parser("skill", help="print the agent skill (SKILL.md) that teaches an AI assistant to use cfn-typed")
+        p = sub.add_parser("skill", help="print the agent skill (SKILL.md) that teaches an AI assistant to use cfn-typed, and where its directory is")
+        p.add_argument("--dir", action="store_true", help="print only the skill's directory (it holds SKILL.md and resources/)")
 
     args = ap.parse_args(argv)
     if args.command == "skill":
-        print(skill_text(), end="")
+        print(skill_dir() if args.dir else skill_text(), end="\n" if args.dir else "")
         return 0
     if args.command == "import":
         from cfn_typed import importer

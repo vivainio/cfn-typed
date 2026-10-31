@@ -51,8 +51,8 @@ what you need and change it.
 
 The package also ships the generated types its patterns use as a public module,
 `cfn_typed_sumo.types`. They are generated from `packages/sumo/cfn-typegen.toml`, which lists
-the resource types the patterns need plus the core services (IAM, Lambda, SQS, SNS, S3, KMS,
-DynamoDB, Logs, Events, SSM, CloudWatch); the repository does not contain them, and CI and the
+the resource types the patterns need plus the core and everyday services (IAM, Lambda, SQS, SNS, S3,
+KMS, DynamoDB, EC2, ECS, both API Gateways, CloudFront, RDS and so on, but not all of AWS); the repository does not contain them, and CI and the
 release build generate them. The snippets start from these imports:
 
 ```python
@@ -68,6 +68,7 @@ The other patterns on these pages (load balancer, storage and so on) are still i
 | [Queue with a dead-letter queue](queue-with-dlq.md) | `{name}Queue` and `{name}DLQ` |
 | [SQS-triggered Lambda](sqs-trigger.md) | one `AWS::Lambda::EventSourceMapping` |
 | [Load balancer building blocks](load-balancer.md) | a load balancer, target group, listener or ingress rule |
+| [HTTP API with a JWT authorizer](http-api.md) | an HTTP API, a Lambda integration, a JWT authorizer, one route per route key and the invoke permission |
 | [One load balancer, several ports](web-entrypoint.md) | security group, load balancer, and a target group and listener per port |
 | [Encrypted storage](storage.md) | a KMS key, a private bucket and its policy, a table, a repository |
 | [Publishing values through SSM](publishing.md) | SSM parameters that one stack publishes and another reads |

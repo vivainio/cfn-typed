@@ -21,11 +21,12 @@ from cfn_typed_sumo.types import lambda_, sqs
 ## What is in it
 
 - **Patterns** (`cfn_typed_sumo.patterns`, re-exported from `cfn_typed_sumo`): a queue with its
-  dead-letter queue, a Lambda execution role, an SQS trigger, mandatory company tags and company rules.
+  dead-letter queue, a Lambda execution role, an SQS trigger, an HTTP API with a JWT authorizer, a CloudFront
+  static site (with an optional domain and ACM certificate), mandatory company tags and company rules.
   The other patterns in this book are still in `examples/` and move in over time.
 - **Generated types** (`cfn_typed_sumo.types`): the resource types the patterns use plus the core
-  services (IAM, Lambda, SQS, SNS, S3, KMS, DynamoDB, Logs, Events, SSM, CloudWatch), shipped in the
-  wheel. They are public: use them for your own resources too. The list is
+  services (IAM, Lambda, SQS, SNS, S3, KMS, DynamoDB, Logs, Events, SSM, CloudWatch) and the usual
+  compute, web and data ones (EC2, ECS, ECR, EKS, ELBv2, API Gateway, CloudFront, Route 53, RDS, Step Functions, Kinesis, Secrets Manager, Cognito and more), shipped in the wheel. They are public: use them for your own resources too. The list is
   `packages/sumo/cfn-typegen.toml`; anything else you still generate yourself with `cfn-typegen`.
 
 ## The deal

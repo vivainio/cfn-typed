@@ -2,7 +2,7 @@
 
 import cfn_typed as cfn
 from defaults import network, standard_tags
-from loadbalancer import web_entrypoint
+from cfn_typed_sumo.loadbalancer import web_entrypoint
 
 
 # --8<-- [start:stack]

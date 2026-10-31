@@ -4,7 +4,7 @@
 import re
 from collections.abc import Mapping, Sequence
 
-from cfn_types import dynamodb, ecr, kms, s3, ssm
+from cfn_typed_sumo.types import dynamodb, ecr, kms, s3, ssm
 
 from cfn_typed import Expr, Resources, Tag, allow, deny, get_att, join, ref, sub
 from cfn_typed.dynamodb import Index, Key, keys

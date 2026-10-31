@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "examples"))
 
-from constructs import (
+from cfn_typed_sumo.constructs import (
     alarm, alarm_topic, composite_alarm, fargate_service, function, lambda_errors_alarm, lambda_scaling, live_alias,
     queue_backlog_alarm, queue_step_scaling, schedule, service_scaling, table_scaling, topic_to_queue, vpc,
 )  # noqa: E402

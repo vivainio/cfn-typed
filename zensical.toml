@@ -56,6 +56,7 @@ nav = [
   ] },
   { "Testing with golden templates" = "testing.md" },
   { "cfn-typed-sumo (fat pattern library)" = "sumo.md" },
+  { "Sumo patterns (catalog)" = "sumo-patterns.md" },
   { "Distributing patterns" = "distributing.md" },
   { "The generator" = "generator.md" },
   { "Reference" = "reference/index.md" },

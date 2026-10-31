@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "examples"))
 
 import data_consumer  # noqa: E402
 import data_platform  # noqa: E402
-from storage import dynamodb_table, ecr_repository, encryption_key, publish, secure_bucket  # noqa: E402
+from cfn_typed_sumo.storage import dynamodb_table, ecr_repository, encryption_key, publish, secure_bucket  # noqa: E402
 
 import cfn_typed as cfn  # noqa: E402
 

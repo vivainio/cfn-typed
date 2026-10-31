@@ -2,7 +2,7 @@
 
 import cfn_typed as cfn
 from cfn_typed import Expr, Tag, get_att, sub
-from storage import dynamodb_table, encryption_key, publish, secure_bucket
+from cfn_typed_sumo.storage import dynamodb_table, encryption_key, publish, secure_bucket
 
 PREFIX = "/data-platform/storage"
 

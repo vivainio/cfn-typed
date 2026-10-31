@@ -5,11 +5,11 @@ pattern. For a web service with a load balancer see `fargate_service` in [CDK L2
 has none.
 
 ```python
---8<-- "examples/integrations.py:imports"
+--8<-- "packages/sumo/src/cfn_typed_sumo/integrations.py:imports"
 ```
 
 ```python
---8<-- "examples/integrations.py:fargate_task"
+--8<-- "packages/sumo/src/cfn_typed_sumo/integrations.py:fargate_task"
 ```
 
 ```python

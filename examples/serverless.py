@@ -3,7 +3,7 @@
 # --8<-- [start:stack]
 import cfn_typed as cfn
 from cfn_types import lambda_
-from constructs import function, schedule
+from cfn_typed_sumo.constructs import function, schedule
 
 
 def build() -> cfn.Template:

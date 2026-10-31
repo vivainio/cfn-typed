@@ -5,13 +5,13 @@ the same every time: an encryption key, a private bucket, a table, and a contain
 set those defaults once.
 
 ```python
---8<-- "examples/storage.py:imports"
+--8<-- "packages/sumo/src/cfn_typed_sumo/storage.py:imports"
 ```
 
 ## An encryption key
 
 ```python
---8<-- "examples/storage.py:encryption_key"
+--8<-- "packages/sumo/src/cfn_typed_sumo/storage.py:encryption_key"
 ```
 
 - **The key policy only enables IAM.** Access is then granted with ordinary identity policies, for example
@@ -24,7 +24,7 @@ set those defaults once.
 ## A private bucket and its policy
 
 ```python
---8<-- "examples/storage.py:secure_bucket"
+--8<-- "packages/sumo/src/cfn_typed_sumo/storage.py:secure_bucket"
 ```
 
 - **No bucket name.** CloudFormation picks a unique one, so a replacement never collides with the old bucket.
@@ -39,7 +39,7 @@ set those defaults once.
 ## A table
 
 ```python
---8<-- "examples/storage.py:dynamodb_table"
+--8<-- "packages/sumo/src/cfn_typed_sumo/storage.py:dynamodb_table"
 ```
 
 On-demand billing and point-in-time recovery are the defaults you almost always want, and deletion protection is
@@ -66,7 +66,7 @@ table = dynamodb_table("pk", ("ts", "N"), gsis=[gsi("by-user", "user", projectio
 ## A container repository
 
 ```python
---8<-- "examples/storage.py:ecr_repository"
+--8<-- "packages/sumo/src/cfn_typed_sumo/storage.py:ecr_repository"
 ```
 
 Immutable tags and scan-on-push, and a pull policy only when you name principals. The pull actions are written with

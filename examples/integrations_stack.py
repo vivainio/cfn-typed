@@ -3,12 +3,12 @@
 import cfn_typed as cfn
 from cfn_types import elasticloadbalancingv2 as elbv2
 from cfn_types import lambda_, s3, sns
-from integrations import (
+from cfn_typed_sumo.integrations import (
     alias_to_distribution, alias_to_load_balancer, api_to_dynamodb, api_to_lambda, bucket_to_lambda, event_to_lambda,
     event_to_queue, fan_out, fargate_task, firehose_to_s3, lambda_behind_alb, stream_trigger, with_stream,
 )
 from cfn_typed_sumo import lambda_role, queue_with_dlq, static_site
-from storage import dynamodb_table
+from cfn_typed_sumo.storage import dynamodb_table
 
 
 def build() -> cfn.Template:

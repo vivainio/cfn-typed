@@ -2,8 +2,8 @@
 
 `cfn_typed.cli` is an optional command line that you call from your own `main()`. It is not a
 `cfn-typed` command: your script says which stacks exist, and the library gives them four
-subcommands, `emit`, `check`, `diff` and `ls`. Nothing else in the package imports it, and it needs
-nothing beyond the standard library (`-f yaml` needs `cfn-typed[yaml]`).
+subcommands, `emit`, `check`, `diff` and `ls` (the standalone `cfn-typed` command adds `import`).
+Nothing else in the package imports it, and it needs nothing beyond the standard library (`-f yaml` needs `cfn-typed[yaml]`).
 
 ```python
 # stacks.py
@@ -100,6 +100,19 @@ It compares each stack with `DIR/<name>.yaml` (`-f json` for JSON), prints a uni
 on a difference or a missing file. `--update` rewrites the files instead. This is the
 [golden-file workflow](testing.md) without pytest, for a repository that wants a CI step and not a
 test file.
+
+## `import`: start from an existing template
+
+```text
+$ cfn-typed import template.json -o stack.py --types cfn_types
+```
+
+Only the standalone `cfn-typed` command has this one. It writes a template file as a Python module with `build() -> cfn.Template`, using the generated factories where there
+is one and plain dicts where there is not (the module lists what it kept as a dict, and why). Generate the types
+first with `cfn-typegen --template template.json`. By default the module renders back to exactly the original.
+`--asl` writes each state machine's `DefinitionString` as a `Definition` object that
+[`cfn_typed.asl`](state-machines.md) types and checks; the template then differs from the original in that one
+property.
 
 ## `ls`: list the resources
 

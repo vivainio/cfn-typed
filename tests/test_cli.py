@@ -130,3 +130,9 @@ def test_standalone_needs_files(tmp_path) -> None:
     with pytest.raises(SystemExit) as e:
         main(argv=["check", str(tmp_path / "nope.yaml")])
     assert e.value.code == 2
+
+
+def test_skill_prints_the_agent_skill(capsys) -> None:
+    assert main(argv=["skill"], prog="cfn-typed") == 0
+    out = capsys.readouterr().out
+    assert out.startswith("---\nname: cfn-typed\n") and "cfn-typed import" in out

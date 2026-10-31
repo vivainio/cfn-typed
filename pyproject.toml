@@ -58,6 +58,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/cfn_typed"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"skills/cfn-typed/SKILL.md" = "cfn_typed/SKILL.md"  # `cfn-typed skill` prints it
+
 [tool.ty.environment]
 python-version = "3.14"
 root = ["src", "packages/sumo/src", "examples", "."]

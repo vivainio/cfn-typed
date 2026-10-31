@@ -83,6 +83,16 @@ def load_template(path: Path) -> dict[str, Any]:
     return yaml.load(text, Loader=Loader)  # noqa: S506 (a SafeLoader subclass)
 
 
+def skill_text() -> str:
+    """The agent skill: packaged as `cfn_typed/SKILL.md`, or read from `skills/cfn-typed/` in a source checkout."""
+    from importlib.resources import files
+
+    packaged = files("cfn_typed") / "SKILL.md"
+    if packaged.is_file():
+        return packaged.read_text(encoding="utf-8")
+    return (Path(__file__).resolve().parents[2] / "skills" / "cfn-typed" / "SKILL.md").read_text(encoding="utf-8")
+
+
 def _from_files(paths: Sequence[str], ap: argparse.ArgumentParser) -> dict[str, Builder]:
     if not paths:
         ap.error("give at least one template file")
@@ -292,7 +302,12 @@ def main(
         p.add_argument("-o", "--out", type=Path, help="write the module to this file instead of printing it")
         p.add_argument("--types", default="cfn_types", help="the package cfn-typegen generated (default: cfn_types)")
 
+        sub.add_parser("skill", help="print the agent skill (SKILL.md) that teaches an AI assistant to use cfn-typed")
+
     args = ap.parse_args(argv)
+    if args.command == "skill":
+        print(skill_text(), end="")
+        return 0
     if args.command == "import":
         from cfn_typed import importer
 

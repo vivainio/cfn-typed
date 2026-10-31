@@ -62,5 +62,6 @@ does not contain it; it is generated when the tests run.
 | [Parameters as variables](parameters.md) | template parameters (including SSM), declared once and used as variables |
 | [CDK L2 constructs as patterns](cdk-l2.md) | a Lambda function, a schedule, an SNS subscription, a VPC, a Fargate service, alarms, and auto scaling for services, Lambda aliases and tables |
 | [Serverless Framework in a few lines](serverless.md) | the Serverless `functions:` example, a scheduled Lambda, as patterns |
+| [Mandatory tags](mandatory-tags.md) | nothing, but resolves and checks the tags a company requires, from service and per-resource values |
 | [Composing fragments](composing.md) | nothing, but how to combine the above safely |
 | [A complete stack](complete-stack.md) | all of the above in one template |

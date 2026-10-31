@@ -1,12 +1,14 @@
 """Pattern helpers shown in the book (docs/). Sections feed the pages via pymdownx.snippets."""
 
 # --8<-- [start:imports]
-from collections.abc import Sequence
-from dataclasses import dataclass
+import re
+from collections.abc import Collection, Sequence
+from dataclasses import asdict, dataclass, fields
+from typing import Literal, TypedDict
 
 from cfn_types import iam, lambda_, sqs
 
-from cfn_typed import AnyStatement, Expr, Resources, Tag, allow, arn, assume_role_policy, get_att, policy_document, ref
+from cfn_typed import AnyResource, AnyStatement, Expr, Resources, Tag, allow, arn, assume_role_policy, get_att, policy_document, ref
 from cfn_typed.policy import service
 
 # --8<-- [end:imports]
@@ -82,3 +84,65 @@ def queue_with_dlq(
 
 
 # --8<-- [end:queue_with_dlq]
+
+
+# --8<-- [start:company_tags]
+@dataclass(frozen=True, kw_only=True)
+class CompanyTags:
+    """The tags every taggable resource must end up with. No defaults, so a missing one is an error."""
+
+    owner: str
+    cost_center: str
+    environment: Literal["dev", "test", "prod"]
+    role: str
+
+    def __post_init__(self) -> None:
+        if not re.fullmatch(r"CC-\d{4}", self.cost_center):
+            raise ValueError(f"cost_center must look like CC-1234, got {self.cost_center!r}")
+
+
+REQUIRED = frozenset(f.name for f in fields(CompanyTags))
+
+
+class SomeCompanyTags(TypedDict, total=False):
+    """Any subset of the company tags: what a service sets for all its resources."""
+
+    owner: str
+    cost_center: str
+    environment: Literal["dev", "test", "prod"]
+    role: str
+
+
+# The company decides which types it expects tags on; extend it as you adopt services.
+TAGGABLE = frozenset({"AWS::SQS::Queue", "AWS::S3::Bucket", "AWS::DynamoDB::Table", "AWS::KMS::Key"})
+
+
+def tagged(resources: Resources, service: SomeCompanyTags, *, taggable: Collection[str] = TAGGABLE) -> Resources:
+    """Resolve the company tags for every taggable resource: its own tags over the `service` tags.
+
+    Each resource must end up with all of `CompanyTags`, or this raises naming the resource and what is missing.
+    Tags that are not company tags are left alone.
+    """
+    out: Resources = {}
+    for logical_id, resource in resources.items():
+        if resource["Type"] in taggable:
+            props = dict(resource.get("Properties", {}))
+            own = props.get("Tags", [])
+            merged = {**service, **{t["Key"]: t["Value"] for t in own if t["Key"] in REQUIRED}}
+            if missing := REQUIRED - merged.keys():
+                raise ValueError(f"{logical_id} is missing company tags: {', '.join(sorted(missing))}")
+            others = [t for t in own if t["Key"] not in REQUIRED]
+            resolved = [{"Key": k, "Value": v} for k, v in asdict(CompanyTags(**merged)).items()]
+            resource = AnyResource(**{**resource, "Properties": {**props, "Tags": [*others, *resolved]}})
+        out[logical_id] = resource
+    return out
+
+
+def untagged(resources: Resources, *, taggable: Collection[str] = TAGGABLE) -> list[str]:
+    """Logical IDs of taggable resources missing a company tag: a backstop for templates that skip `tagged`."""
+    return [
+        logical_id
+        for logical_id, r in resources.items()
+        if r["Type"] in taggable and REQUIRED - {t["Key"] for t in r.get("Properties", {}).get("Tags", [])}
+    ]
+# --8<-- [end:company_tags]

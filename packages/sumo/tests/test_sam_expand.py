@@ -51,7 +51,11 @@ def normal(value: Any) -> Any:
     if isinstance(value, dict):
         if set(value) == {"Fn::Sub"} and isinstance(value["Fn::Sub"], str):
             return value["Fn::Sub"].replace("${AWS::Partition}", "aws")
-        out = {k: normal(v) for k, v in value.items() if k != "Version" or "Statement" not in value}
+        if set(value) == {"Fn::Join"} and value["Fn::Join"][0] == "\n" and all(isinstance(x, str) for x in value["Fn::Join"][1]):
+            return "\n".join(value["Fn::Join"][1])
+        out = {k: normal(v) for k, v in value.items() if (k != "Version" or "Statement" not in value) and value[k] != []}
+        if isinstance(out.get("DefinitionString"), str):
+            out["DefinitionString"] = json.loads(out["DefinitionString"])
         if isinstance(out.get("Service"), str):
             out["Service"] = [out["Service"]]
         if isinstance(out.get("Tags"), list):
@@ -112,10 +116,8 @@ def test_globals_merge_and_ignore_globals() -> None:
 def test_unsupported_things_are_errors_not_silently_dropped() -> None:
     with pytest.raises(NotImplementedError, match="s3://"):
         sam.expand(sam.template({"F": sam.function(handler="h", code_uri="src/")}))
-    with pytest.raises(NotImplementedError, match="Connectors"):
-        sam.expand(sam.template({"F": serverless.function(Handler="h", CodeUri="s3://b/k.zip", connectors={"x": {}})}))
-    with pytest.raises(NotImplementedError, match="AWS::Serverless::StateMachine"):
-        sam.expand({"Resources": {"S": {"Type": "AWS::Serverless::StateMachine", "Properties": {}}}})
+    with pytest.raises(NotImplementedError, match="AWS::Serverless::LayerVersion"):
+        sam.expand({"Resources": {"S": {"Type": "AWS::Serverless::LayerVersion", "Properties": {}}}})
     with pytest.raises(NotImplementedError, match="Tracing"):
         sam.expand({"Resources": {"F": {"Type": "AWS::Serverless::Function", "Properties": {"Handler": "h", "CodeUri": "s3://b/k", "Tracing": "Active"}}}})
     with pytest.raises(NotImplementedError, match="S3"):
@@ -183,3 +185,47 @@ def test_a_polling_event_without_its_source_is_a_clear_error() -> None:
     bad = {"Resources": {"F": {"Type": "AWS::Serverless::Function", "Properties": {"Handler": "h", "CodeUri": "s3://b/k", "Events": {"K": {"Type": "Kinesis", "Properties": {}}}}}}}
     with pytest.raises(NotImplementedError, match="Stream"):
         sam.expand(bad)  # ty: ignore[invalid-argument-type]
+
+
+def test_embedded_connectors_are_a_policy_on_the_function_role() -> None:
+    tpl = sam.template({
+        "Q": sqs.queue(),
+        "F": serverless.function(Handler="h", Runtime="python3.12", CodeUri="s3://b/k.zip", connectors={"ToQ": {"Properties": {"Destination": {"Id": "Q"}, "Permissions": ["Read", "Write"]}}}),
+    })
+    ours, theirs = sam.expand(tpl)["Resources"], translate(tpl)
+    theirs["FToQPolicy"].pop("Metadata")
+    assert normal(ours["FToQPolicy"]) == normal(theirs["FToQPolicy"])
+
+
+def test_state_machine_matches_sam() -> None:
+    nightly: Any = {"Type": "Schedule", "Properties": {"Schedule": "rate(1 day)"}}  # an inline union of event types is beyond the checker
+    tpl = sam.template({
+        "F": sam.function(handler="h", code_uri="s3://b/k.zip", runtime="python3.12"),
+        "SM": serverless.state_machine(
+            Definition={"StartAt": "A", "States": {"A": {"Type": "Task", "Resource": "${Fn}", "End": True}}},
+            DefinitionSubstitutions={"Fn": get_att("F", "Arn")},
+            Policies=[{"Statement": [{"Effect": "Allow", "Action": "lambda:InvokeFunction", "Resource": "*"}]}],
+            Events={"Nightly": nightly},
+        ),
+    })
+    ours, theirs = sam.expand(tpl)["Resources"], translate(tpl)
+    for logical in ("SM", "SMRole", "SMNightly", "SMNightlyRole"):
+        assert normal(ours[logical]) == normal(theirs[logical]), logical
+    assert "SAM" not in json.dumps(sam.expand(tpl))
+    assert_template_ok(sam.expand(tpl))
+
+
+def test_rest_api_events_become_plain_apigateway_v1_resources() -> None:
+    tpl = sam.template({"Web": sam.function(handler="h", code_uri="s3://b/k.zip", events={
+        "List": sam.api_event("/orders", "get"), "One": sam.api_event("/orders/{id}", "GET"), "Root": sam.api_event("/", "GET")})})
+    out = sam.expand(tpl)["Resources"]
+    kinds = [r["Type"] for r in out.values()]
+    assert kinds.count("AWS::ApiGateway::Method") == 3 and kinds.count("AWS::ApiGateway::Resource") == 2
+    parts = {r["Properties"]["PathPart"] for r in out.values() if r["Type"] == "AWS::ApiGateway::Resource"}
+    assert parts == {"orders", "{id}"}  # `/orders/{id}` hangs under `/orders`, one resource per segment
+    assert "Body" not in json.dumps(out) and "openapi" not in json.dumps(out)
+    deployments = [k for k, r in out.items() if r["Type"] == "AWS::ApiGateway::Deployment"]
+    assert len(deployments) == 1
+    other = sam.expand(sam.template({"Web": sam.function(handler="h", code_uri="s3://b/k.zip", events={"List": sam.api_event("/orders", "get")})}))
+    assert [k for k, r in other["Resources"].items() if r["Type"] == "AWS::ApiGateway::Deployment"] != deployments  # new routes, new deployment
+    assert_template_ok(sam.expand(tpl))

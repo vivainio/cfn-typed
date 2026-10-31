@@ -6,7 +6,8 @@ a fixed subset of SAM (release pinned in `cfn-typegen.toml`) and raises `NotImpl
 instead of dropping it:
 
 - `AWS::Serverless::Function` with an S3 `CodeUri`, `Policies`, `Environment`, the `SQS`, `Kinesis`, `DynamoDB`, `SNS`,
-  `Schedule`, `EventBridgeRule` and `HttpApi` events, and `Globals.Function`;
+  `Schedule`, `EventBridgeRule`, `HttpApi` and REST `Api` events, and `Globals.Function`;
+- `AWS::Serverless::StateMachine` with a `Definition`, `Policies` and `Schedule` or `EventBridgeRule` events;
 - `AWS::Serverless::SimpleTable`;
 - `AWS::Serverless::Connector` between a function in the template and an SQS queue, SNS topic, S3 bucket, DynamoDB
   table, `SimpleTable` or function in it, with `Read` and `Write`.
@@ -16,16 +17,25 @@ Other resources pass through unchanged. Logical IDs are the ones SAM makes: `{Fu
 exception is HttpApi, which gets `{Function}Api...` (one HTTP API per function) instead of SAM's shared one.
 """
 
+import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from cfn_typed import Resources, Template, assume_role_policy, get_att, ref
+from cfn_typed import Resources, Template, assume_role_policy, get_att, ref, sub
 from cfn_typed.policy import service
 
 from cfn_typed_sumo.constructs import invoke_permission
-from cfn_typed_sumo.http_api import http_api
-from cfn_typed_sumo.types import dynamodb, events, iam, lambda_, sns
+from cfn_typed_sumo.http_api import http_api, route_id
+from cfn_typed_sumo.types import (
+    apigateway,
+    dynamodb,
+    events,
+    iam,
+    lambda_,
+    sns,
+    stepfunctions,
+)
 
 BASIC_EXECUTION = "AWSLambdaBasicExecutionRole"
 # Events that poll a source need the function's role to read from it
@@ -80,10 +90,8 @@ def merged_globals(props: Mapping[str, Any], defaults: Mapping[str, Any], ignore
     return out
 
 
-def _function(name: str, res: Mapping[str, Any], defaults: Mapping[str, Any]) -> Resources:
+def _function(name: str, res: Mapping[str, Any], defaults: Mapping[str, Any], everything: Mapping[str, Any]) -> Resources:
     ignore = res.get("IgnoreGlobals", [])
-    if res.get("Connectors"):
-        raise _unsupported("resource key", name, ["Connectors"])
     props = merged_globals(res.get("Properties", {}), defaults, [ignore] if isinstance(ignore, str) else ignore)
     if extra := set(props) - _HANDLED:
         raise _unsupported("properties", name, list(extra))
@@ -118,17 +126,62 @@ def _function(name: str, res: Mapping[str, Any], defaults: Mapping[str, Any]) ->
 
     out: Resources = {role: iam.role(**role_props), name: lambda_.function(**fn_props)}
     routes: list[str] = []
+    rest: list[tuple[str, str]] = []
     for event_name, event in event_map.items():
-        out |= _event(name, event_name, event, routes)
+        out |= _event(name, event_name, event, routes, rest)
     if routes:
         out |= http_api(f"{name}", function=name, routes=routes).resources
+    if rest:
+        out |= _rest_api(f"{name}Rest", name, rest)
+    for conn, spec in res.get("Connectors", {}).items():  # `Connectors: {ToQueue: {Properties: ...}}`: the function is the source
+        out |= _connector(f"{name}{conn}", {"Properties": {**spec.get("Properties", {}), "Source": {"Id": name}}}, everything)
     for key in ("Condition", "DependsOn", "DeletionPolicy", "UpdateReplacePolicy", "Metadata"):
         if key in res:
             out[name][key] = res[key]
     return out
 
 
-def _event(function: str, event_name: str, event: Mapping[str, Any], routes: list[str]) -> Resources:
+def _rest_api(name: str, function: str, routes: Sequence[tuple[str, str]]) -> Resources:
+    """A REST API with a resource per path segment and a Lambda proxy method per route: plain resources, no OpenAPI.
+
+    `{name}Api`, `{name}Resource{Path}`, `{name}Method{Method}{Path}`, `{name}Deployment{hash of the routes}`,
+    `{name}Stage` (`Prod`) and `{name}InvokePermission`. The deployment's ID changes with the routes, because
+    API Gateway only publishes a change to a new deployment.
+    """
+    api = f"{name}Api"
+    out: Resources = {api: apigateway.rest_api(Name=sub("${AWS::StackName}-" + name))}
+    uri = sub(
+        "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${Fn}/invocations",
+        {"Fn": get_att(function, "Arn")},
+    )
+    integration: Any = {"Type": "AWS_PROXY", "IntegrationHttpMethod": "POST", "Uri": uri}
+    parents: dict[str, Any] = {"": get_att(api, "RootResourceId")}
+    methods: list[str] = []
+    for method, path in sorted(set(routes)):
+        built = ""
+        for part in [p for p in path.split("/") if p]:
+            parent, built = built, f"{built}/{part}"
+            if built not in parents:
+                resource = f"{name}Resource{route_id(built)}"
+                out[resource] = apigateway.resource(RestApiId=ref(api), ParentId=parents[parent], PathPart=part)
+                parents[built] = ref(resource)
+        logical = f"{name}Method{method.capitalize()}{route_id(built) if built else 'Root'}"
+        out[logical] = apigateway.method(
+            RestApiId=ref(api), ResourceId=parents[built], HttpMethod=method, AuthorizationType="NONE", Integration=integration,
+        )
+        methods.append(logical)
+    digest = hashlib.sha1(json.dumps(sorted(set(routes))).encode()).hexdigest()[:8]
+    deployment = f"{name}Deployment{digest}"
+    out[deployment] = apigateway.deployment(RestApiId=ref(api), depends_on=methods)
+    out[f"{name}Stage"] = apigateway.stage(RestApiId=ref(api), DeploymentId=ref(deployment), StageName="Prod")
+    out[f"{name}InvokePermission"] = lambda_.permission(
+        Action="lambda:InvokeFunction", FunctionName=ref(function), Principal="apigateway.amazonaws.com",
+        SourceArn=sub("arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${A}/*/*/*", {"A": ref(api)}),
+    )
+    return out
+
+
+def _event(function: str, event_name: str, event: Mapping[str, Any], routes: list[str], rest: list[tuple[str, str]]) -> Resources:
     kind, props = event.get("Type"), event.get("Properties", {})
     logical = f"{function}{event_name}"
     match kind:
@@ -163,12 +216,17 @@ def _event(function: str, event_name: str, event: Mapping[str, Any], routes: lis
             if "Enabled" in props:  # as SAM: no `Enabled`, no `State`
                 rule["State"] = "ENABLED" if props["Enabled"] else "DISABLED"
             return {logical: events.rule(**rule), f"{logical}Permission": invoke_permission(function, "events.amazonaws.com", get_att(logical, "Arn"))}
+        case "Api":
+            if extra := set(props) - {"Path", "Method"}:
+                raise _unsupported(f"Api event {event_name!r} properties", function, list(extra))
+            rest.append((props["Method"].upper(), props["Path"]))
+            return {}
         case "HttpApi":
             if "ApiId" in props or props.get("Auth"):
                 raise _unsupported(f"HttpApi event {event_name!r} properties", function, ["ApiId", "Auth"])
             routes.append(f"{props.get('Method', 'ANY').upper()} {props.get('Path', '/{proxy+}')}")
             return {}
-    raise NotImplementedError(f"{function}: event {event_name!r} of type {kind!r} not supported by expand (SQS, Kinesis, DynamoDB, SNS, Schedule, EventBridgeRule, HttpApi)")
+    raise NotImplementedError(f"{function}: event {event_name!r} of type {kind!r} not supported by expand (SQS, Kinesis, DynamoDB, SNS, Schedule, EventBridgeRule, HttpApi, Api)")
 
 
 # What `Read` and `Write` allow on each kind of destination, and which resources the statement covers: "arn",
@@ -225,6 +283,52 @@ def _connector(name: str, res: Mapping[str, Any], resources: Mapping[str, Any]) 
     return out
 
 
+def _state_machine(name: str, res: Mapping[str, Any]) -> Resources:
+    props = res.get("Properties", {})
+    if extra := set(props) - {"Definition", "DefinitionSubstitutions", "Policies", "Events", "Type", "Name", "Tags"}:
+        raise _unsupported("properties", name, list(extra))
+    if "Definition" not in props:
+        raise _unsupported("properties", name, ["DefinitionUri (give Definition)"])
+    role = f"{name}Role"
+    managed: list[Any] = []
+    inline: list[Any] = []
+    for policy in ([props["Policies"]] if isinstance(props.get("Policies"), (str, Mapping)) else props.get("Policies", [])):
+        if isinstance(policy, str):
+            managed.append(_managed_arn(policy))
+        elif "Statement" in policy:
+            inline.append({"PolicyName": f"{role}Policy{len(inline)}", "PolicyDocument": {"Version": "2012-10-17", **policy}})
+        else:
+            raise _unsupported("policy", name, ["policy templates (use managed policy names or statements)"])
+    role_props: Any = {"AssumeRolePolicyDocument": assume_role_policy(service("states.amazonaws.com"))}
+    if managed:
+        role_props["ManagedPolicyArns"] = managed
+    if inline:
+        role_props["Policies"] = inline
+    machine: Any = {"DefinitionString": json.dumps(props["Definition"], indent=4, sort_keys=True), "RoleArn": get_att(role, "Arn")}
+    for src, dst in (("DefinitionSubstitutions", "DefinitionSubstitutions"), ("Type", "StateMachineType"), ("Name", "StateMachineName")):
+        if src in props:
+            machine[dst] = props[src]
+    if "Tags" in props:
+        machine["Tags"] = role_props["Tags"] = _tag_list(props["Tags"])
+    out: Resources = {role: iam.role(**role_props), name: stepfunctions.state_machine(**machine)}
+    for event_name, event in props.get("Events", {}).items():
+        logical, kind, eprops = f"{name}{event_name}", event.get("Type"), event.get("Properties", {})
+        if kind == "Schedule" and not set(eprops) - {"Schedule", "Enabled"}:
+            rule: Any = {"ScheduleExpression": eprops["Schedule"]}
+            if "Enabled" in eprops:
+                rule["State"] = "ENABLED" if eprops["Enabled"] else "DISABLED"
+        elif kind == "EventBridgeRule" and not set(eprops) - {"Pattern"}:
+            rule = {"EventPattern": eprops["Pattern"]}
+        else:
+            raise NotImplementedError(f"{name}: event {event_name!r} of type {kind!r} not supported by expand (Schedule, EventBridgeRule)")
+        out[logical] = events.rule(**rule, Targets=[{"Arn": ref(name), "Id": f"{logical}StepFunctionsTarget", "RoleArn": get_att(f"{logical}Role", "Arn")}])
+        out[f"{logical}Role"] = iam.role(
+            AssumeRolePolicyDocument=assume_role_policy(service("events.amazonaws.com")),
+            Policies=[{"PolicyName": f"{logical}RoleStartExecutionPolicy", "PolicyDocument": {"Statement": [{"Action": "states:StartExecution", "Effect": "Allow", "Resource": ref(name)}]}}],
+        )
+    return out
+
+
 def _table(name: str, res: Mapping[str, Any]) -> Resources:
     props = res.get("Properties", {})
     if extra := set(props) - {"PrimaryKey", "ProvisionedThroughput", "TableName", "Tags"}:
@@ -258,7 +362,9 @@ def expand(template: Template) -> Template:
     for name, res in template["Resources"].items():
         match res["Type"]:
             case "AWS::Serverless::Function":
-                resources |= _function(name, res, defaults)
+                resources |= _function(name, res, defaults, template["Resources"])
+            case "AWS::Serverless::StateMachine":
+                resources |= _state_machine(name, res)
             case "AWS::Serverless::SimpleTable":
                 resources |= _table(name, res)
             case "AWS::Serverless::Connector":

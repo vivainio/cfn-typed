@@ -49,8 +49,9 @@ worker = sam.function(
 
 | Pattern | Resource | Notes |
 |---|---|---|
-| `table(key, key_type="String")` | `SimpleTable` | one partition key |
-| `connect(name, source, destination, permissions=("Read",))` | `Connector` | SAM writes the least-privilege policy for the pair; the ID is `{name}Connector` |
+| `table(key, key_type="String")` | `StateMachine` (`Definition`, `Policies`, `Schedule` and `EventBridgeRule` events) | `StepFunctions::StateMachine`, its `{Name}Role`, and for each event the rule and a role that may start the execution |
+| `SimpleTable` | one partition key |
+| `connect(name, source, destination, permissions=("Read",))` | `Connector`, or `Connectors` inside a function | SAM writes the least-privilege policy for the pair; the ID is `{name}Connector` |
 
 `connect` replaces a hand-written role statement when both ends are in the template. For anything it cannot say
 (conditions, a resource outside the template), use `statements=` instead.
@@ -99,19 +100,22 @@ It covers a fixed subset, the SAM release the types are pinned to, and says so w
 | `SQS`, `Kinesis`, `DynamoDB` event | `Lambda::EventSourceMapping` `{Name}{Event}`, and the matching execution policy on the role |
 | `SNS` event | `SNS::Subscription` `{Name}{Event}` and `Lambda::Permission` `{Name}{Event}Permission` |
 | `Schedule`, `EventBridgeRule` event | `Events::Rule` `{Name}{Event}` and `Lambda::Permission` `{Name}{Event}Permission` |
+| `Api` event (REST) | `ApiGateway` `RestApi`, a `Resource` per path segment, a proxy `Method` per route, `Deployment` (its ID carries a hash of the routes, so new routes mean a new deployment), `Stage` `Prod` and the invoke permission, one REST API per function |
 | `HttpApi` event | `ApiGatewayV2` `Api`, `Integration`, `Route`, `Stage` and the invoke permission, one API per function, from the [`http_api`](http-api.md) pattern |
+| `StateMachine` (`Definition`, `Policies`, `Schedule` and `EventBridgeRule` events) | `StepFunctions::StateMachine`, its `{Name}Role`, and for each event the rule and a role that may start the execution |
 | `SimpleTable` | `DynamoDB::Table`, on-demand unless `ProvisionedThroughput` is given |
-| `Connector` | `IAM::ManagedPolicy` `{Name}Policy` on the source function's role (`{Name}PolicyDestination{N}` for a list), for `Read` and `Write` on an SQS queue, SNS topic, S3 bucket, DynamoDB table or `SimpleTable`, or a function |
+| `Connector`, or `Connectors` inside a function | `IAM::ManagedPolicy` `{Name}Policy` on the source function's role (`{Name}PolicyDestination{N}` for a list), for `Read` and `Write` on an SQS queue, SNS topic, S3 bucket, DynamoDB table or `SimpleTable`, or a function |
 | `Globals.Function`, `IgnoreGlobals` | merged into each function (`Environment.Variables` and `Tags` are merged, other keys replaced) |
 
-Anything else (the `Connectors` key inside a function, other event types and resources, a local `CodeUri` that needs packaging, properties not
+Anything else (SAM policy templates such as `LambdaInvokePolicy`, other event types and resources, a local `CodeUri` that needs packaging, properties not
 listed above) raises `NotImplementedError` naming it, rather than being dropped. Resources that are not
 `AWS::Serverless::*` pass through unchanged.
 
-The logical IDs of the function, role, mappings, rules and permissions are the ones SAM generates, so a stack
-deployed with the transform can move to the expanded template without replacing those resources. The HTTP API is
-not: SAM puts every route in one `ServerlessHttpApi` built from an OpenAPI document, and `expand` makes plain
-resources instead, so that part is replaced. It also leaves out SAM's `lambda:createdBy` tag.
+The logical IDs of the function, role, mappings, rules, permissions, connector policies and state machine are the
+ones SAM generates, so a stack deployed with the transform can move to the expanded template without replacing
+those resources. The HTTP and REST APIs are not: SAM puts every route in one `ServerlessHttpApi` or
+`ServerlessRestApi` built from an OpenAPI document, and `expand` makes plain resources instead, so those are
+replaced. It also leaves out SAM's `lambda:createdBy` tag.
 
 The test suite checks this against AWS's own translator (`aws-sam-translator`, a dev dependency pinned to the same
 release as the types): each resource `expand` makes, with the same logical ID, has to equal what SAM makes for it.

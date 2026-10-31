@@ -1,6 +1,6 @@
 """cfn-typed plus the generated resource types its patterns use (`cfn_typed_sumo.types`) and the patterns."""
 
-from cfn_typed_sumo import constructs, integrations, loadbalancer, storage
+from cfn_typed_sumo import constructs, integrations, loadbalancer, sam, storage
 from cfn_typed_sumo.http_api import HttpApi, Jwt, http_api
 from cfn_typed_sumo.patterns import (
     COMPANY_RULES,
@@ -19,6 +19,7 @@ __all__ = [
     "constructs",
     "integrations",
     "loadbalancer",
+    "sam",
     "storage",
     "COMPANY_RULES",
     "CompanyTags",

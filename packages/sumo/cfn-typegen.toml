@@ -2,6 +2,7 @@
 # The types the patterns use, plus the core and everyday services (not all of AWS). Add a glob when you want more.
 out = "src/cfn_typed_sumo/types"
 docs = false
+sam = "v1.116.0"  # AWS SAM release the AWS::Serverless::* types come from; bump it to take newer SAM properties
 types = [
     # core services
     "AWS::IAM::*",
@@ -36,4 +37,6 @@ types = [
     "AWS::SecretsManager::*",
     "AWS::Cognito::*",
     "AWS::CloudFormation::*",
+    # AWS SAM (cfn_typed_sumo.types.serverless)
+    "AWS::Serverless::*",
 ]

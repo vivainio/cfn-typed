@@ -37,6 +37,7 @@ nav = [
     { "Data flows" = "patterns/data-flows.md" },
     { "Fargate tasks" = "patterns/containers.md" },
     { "Serverless Framework in a few lines" = "patterns/serverless.md" },
+    { "AWS SAM" = "patterns/sam.md" },
     { "Mandatory tags" = "patterns/mandatory-tags.md" },
     { "Company rules" = "patterns/company-rules.md" },
     { "Composing fragments" = "patterns/composing.md" },

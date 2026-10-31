@@ -269,3 +269,95 @@ def test_property_types_avoid_resource_names_of_the_service(tmp_path: Any) -> No
         src = (tmp_path / out / "foo.py").read_text()
         assert "class RolePolicyProperty(" in src  # the property type
     assert "class RolePolicy(ResourceAttrs)" in (tmp_path / "b" / "foo.py").read_text()
+
+
+# -- AWS SAM: its template-wide schema, cut into registry-style schemas --
+
+SAM_DOC: dict[str, Any] = {
+    "definitions": {
+        "samtranslator__internal__schema_source__aws_serverless_function__Resource": {
+            "properties": {
+                "Type": {"enum": ["AWS::Serverless::Function"]},
+                "Properties": {"$ref": "#/definitions/samtranslator__internal__schema_source__aws_serverless_function__Properties"},
+            },
+        },
+        "samtranslator__internal__schema_source__aws_serverless_function__Properties": {
+            "additionalProperties": False,
+            "required": ["Handler"],
+            "properties": {
+                "Handler": {"type": "string", "markdownDescription": "The entry point."},
+                "Events": {"type": "object", "additionalProperties": {"$ref": "#/definitions/QueueEvent"}},
+            },
+        },
+        "QueueEvent": {
+            "additionalProperties": False,
+            "required": ["Type"],
+            "properties": {
+                "Type": {"enum": ["SQS"], "type": "string"},
+                "Properties": {"allOf": [{"$ref": "#/definitions/samtranslator__internal__schema_source__aws_serverless_function__QueueProps"}]},
+            },
+        },
+        "samtranslator__internal__schema_source__aws_serverless_function__QueueProps": {
+            "type": "object", "properties": {"Queue": {"type": "string"}}, "required": ["Queue"],
+        },
+        "Unrelated": {"type": "string"},
+    },
+}
+
+
+def test_sam_schema_is_cut_into_one_registry_style_schema_per_resource() -> None:
+    from cfn_typed.samschema import sam_schemas
+
+    (schema,) = sam_schemas(SAM_DOC)
+    assert schema["typeName"] == "AWS::Serverless::Function"
+    assert schema["required"] == ["Handler"]
+    assert schema["properties"]["Handler"]["description"] == "The entry point."
+    assert set(schema["definitions"]) == {"QueueEvent", "QueueProps"}  # SAM's long generated prefixes are dropped
+    assert schema["definitions"]["QueueEvent"]["properties"]["Properties"] == {"$ref": "#/definitions/QueueProps"}
+
+
+def test_sam_types_generate_with_literal_event_types_and_build_resources() -> None:
+    from cfn_typed.samschema import sam_schemas
+
+    ns: dict[str, Any] = {}
+    source = gen.render_module("AWS::Serverless", sam_schemas(SAM_DOC))
+    exec(compile(source, "<sam>", "exec"), ns)
+    assert "Type: Expr[Literal['SQS']]" in source
+    fn = ns["function"](Handler="app.handler", Events={"q": {"Type": "SQS", "Properties": {"Queue": "arn"}}})
+    assert fn["Type"] == "AWS::Serverless::Function"
+    assert fn["Properties"]["Events"]["q"]["Properties"] == {"Queue": "arn"}
+
+
+def test_sam_option_adds_the_serverless_module_and_records_the_release(tmp_path: Any, monkeypatch: Any) -> None:
+    import json
+
+    from cfn_typed import samschema
+
+    monkeypatch.setattr(samschema, "SAM_CACHE", tmp_path / "cache")
+    ensure = samschema.ensure_sam
+    (tmp_path / "cache").mkdir()
+    samschema.cache_path("v9.9.9").write_text(json.dumps(SAM_DOC))
+    assert ensure("v9.9.9") == samschema.cache_path("v9.9.9")  # cached: no download
+
+    import zipfile
+
+    zip_path = tmp_path / "schemas.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("q.json", json.dumps({**WIDGET, "typeName": "AWS::Foo::Widget"}))
+    out = tmp_path / "out"
+    gen.main(["--out", str(out), "--schemas", str(zip_path), "--sam", "v9.9.9", "AWS::Serverless::*", "AWS::Foo::*"])
+    text = (out / "serverless.py").read_text()
+    assert "sam:v9.9.9" in text and "def function(" in text
+    assert (out / "foo.py").exists()
+
+
+def test_sam_resources_take_connectors_and_ignore_globals_and_leave_getatt_unchecked() -> None:
+    from cfn_typed.samschema import sam_schemas
+
+    ns: dict[str, Any] = {}
+    source = gen.render_module("AWS::Serverless", sam_schemas(SAM_DOC))
+    exec(compile(source, "<sam>", "exec"), ns)
+    fn = ns["function"](Handler="h", connectors={"ToQueue": {"Properties": {}}}, ignore_globals=["Timeout"])
+    assert fn["Connectors"] == {"ToQueue": {"Properties": {}}} and fn["IgnoreGlobals"] == ["Timeout"]
+    assert "Connectors" not in ns["function"](Handler="h")
+    assert ns["ATTRIBUTES"] == {}  # no entry: GetAtt on a SAM resource is not checked

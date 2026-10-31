@@ -79,6 +79,7 @@ links to the code and the resources each one creates. Only the stacks that assem
 | [Data flows](data-flows.md) | a table stream into a Lambda, a bucket that invokes a Lambda, Firehose into a bucket |
 | [Fargate tasks](containers.md) | a cluster, a task and its two roles, for workers and for tasks a Lambda starts |
 | [Serverless Framework in a few lines](serverless.md) | the Serverless `functions:` example, a scheduled Lambda, as patterns |
+| [AWS SAM](sam.md) | typed `AWS::Serverless::*` resources, generated from a pinned SAM release, and the template header around them |
 | [Mandatory tags](mandatory-tags.md) | nothing, but resolves and checks the tags a company requires, from service and per-resource values |
 | [Company rules](company-rules.md) | nothing, but checks the finished template against rules of your own, as one more layer on the built-in checks |
 | [Composing fragments](composing.md) | nothing, but how to combine the above safely |

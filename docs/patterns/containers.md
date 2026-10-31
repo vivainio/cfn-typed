@@ -9,7 +9,7 @@ has none.
 ```
 
 ```python
---8<-- "examples/integrations.py:fargate_service"
+--8<-- "examples/integrations.py:fargate_task"
 ```
 
 ```python

@@ -286,7 +286,19 @@ def main(
     p.add_argument("-f", "--format", choices=list(_FORMATS), default="yaml")
     p.add_argument("--update", action="store_true", help="rewrite the files instead of failing")
 
+    if standalone:
+        p = sub.add_parser("import", help="write a template file as typed Python (types from `cfn-typegen --template FILE`)")
+        p.add_argument("template", type=Path)
+        p.add_argument("-o", "--out", type=Path, help="write the module to this file instead of printing it")
+        p.add_argument("--types", default="cfn_types", help="the package cfn-typegen generated (default: cfn_types)")
+
     args = ap.parse_args(argv)
+    if args.command == "import":
+        from cfn_typed import importer
+
+        if not args.template.is_file():
+            ap.error(f"no such file: {args.template}")
+        return importer.main(str(args.template), str(args.out) if args.out else None, args.types)
     if standalone:
         chosen = _from_files(args.stack, ap)
         if getattr(args, "schemas", None):

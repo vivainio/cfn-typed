@@ -537,7 +537,7 @@ def load_schemas(zip_path: Path) -> list[Schema]:
 
 def template_types(path: Path) -> list[str]:
     resources = json.loads(path.read_text()).get("Resources", {})
-    return sorted({r["Type"] for r in resources.values() if "Type" in r})
+    return sorted({r["Type"] for r in resources.values() if "Type" in r and not r["Type"].startswith("Custom::")})  # no schema for a custom resource
 
 
 def select(schemas: list[Schema], patterns: list[str]) -> list[Schema]:

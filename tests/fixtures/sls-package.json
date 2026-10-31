@@ -1,0 +1,115 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "The AWS CloudFormation template for this Serverless application",
+  "Resources": {
+    "ServerlessDeploymentBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketEncryption": {"ServerSideEncryptionConfiguration": [{"ServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]}
+      }
+    },
+    "ServerlessDeploymentBucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {"Ref": "ServerlessDeploymentBucket"},
+        "PolicyDocument": {
+          "Statement": [{
+            "Action": "s3:*",
+            "Effect": "Deny",
+            "Principal": "*",
+            "Resource": [
+              {"Fn::Join": ["", ["arn:", {"Ref": "AWS::Partition"}, ":s3:::", {"Ref": "ServerlessDeploymentBucket"}, "/*"]]}
+            ],
+            "Condition": {"Bool": {"aws:SecureTransport": false}}
+          }]
+        }
+      }
+    },
+    "WorkerLogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {"LogGroupName": "/aws/lambda/svc-prod-worker", "RetentionInDays": 30}
+    },
+    "IamRoleLambdaExecution": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Principal": {"Service": ["lambda.amazonaws.com"]}, "Action": ["sts:AssumeRole"]}]},
+        "Policies": [{
+          "PolicyName": {"Fn::Join": ["-", ["svc", "prod", "lambda"]]},
+          "PolicyDocument": {"Version": "2012-10-17", "Statement": [
+            {"Effect": "Allow", "Action": ["logs:CreateLogStream", "logs:PutLogEvents"], "Resource": [{"Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/svc-prod-worker:*"}]},
+            {"Effect": "Allow", "Action": ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"], "Resource": {"Fn::GetAtt": ["OrdersQueue", "Arn"]}}
+          ]}
+        }],
+        "Path": "/",
+        "RoleName": {"Fn::Join": ["-", ["svc", "prod", {"Ref": "AWS::Region"}, "lambdaRole"]]}
+      }
+    },
+    "OrdersQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {"QueueName": "svc-prod-orders", "VisibilityTimeout": 180},
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "WorkerLambdaFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Code": {"S3Bucket": {"Ref": "ServerlessDeploymentBucket"}, "S3Key": "serverless/svc/prod/1700000000/svc.zip"},
+        "Handler": "handler.cleanup",
+        "Runtime": "python3.12",
+        "FunctionName": "svc-prod-worker",
+        "MemorySize": 512,
+        "Timeout": 600,
+        "Environment": {"Variables": {"QUEUE_URL": {"Ref": "OrdersQueue"}, "STAGE": "prod"}},
+        "Role": {"Fn::GetAtt": ["IamRoleLambdaExecution", "Arn"]}
+      },
+      "DependsOn": ["WorkerLogGroup"]
+    },
+    "WorkerLambdaVersionAbc123": {
+      "Type": "AWS::Lambda::Version",
+      "DeletionPolicy": "Retain",
+      "Properties": {"FunctionName": {"Ref": "WorkerLambdaFunction"}}
+    },
+    "WorkerEventsRuleSchedule1": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "ScheduleExpression": "cron(0 3 * * ? *)",
+        "State": "ENABLED",
+        "Targets": [{"Arn": {"Fn::GetAtt": ["WorkerLambdaFunction", "Arn"]}, "Id": "workerSchedule"}]
+      }
+    },
+    "WorkerLambdaPermissionEventsRuleSchedule1": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {"Fn::GetAtt": ["WorkerLambdaFunction", "Arn"]},
+        "Action": "lambda:InvokeFunction",
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {"Fn::GetAtt": ["WorkerEventsRuleSchedule1", "Arn"]}
+      }
+    },
+    "WorkerEventSourceMappingSQSOrdersQueue": {
+      "Type": "AWS::Lambda::EventSourceMapping",
+      "DependsOn": "IamRoleLambdaExecution",
+      "Properties": {
+        "BatchSize": 10,
+        "EventSourceArn": {"Fn::GetAtt": ["OrdersQueue", "Arn"]},
+        "FunctionName": {"Fn::GetAtt": ["WorkerLambdaFunction", "Arn"]},
+        "Enabled": true
+      }
+    },
+    "Cleanup": {
+      "Type": "Custom::Cleanup",
+      "Properties": {"ServiceToken": {"Fn::GetAtt": ["WorkerLambdaFunction", "Arn"]}}
+    }
+  },
+  "Outputs": {
+    "ServerlessDeploymentBucketName": {
+      "Value": {"Ref": "ServerlessDeploymentBucket"},
+      "Export": {"Name": "sls-svc-prod-ServerlessDeploymentBucketName"}
+    },
+    "WorkerLambdaFunctionQualifiedArn": {
+      "Description": "Current Lambda function version",
+      "Value": {"Ref": "WorkerLambdaVersionAbc123"},
+      "Export": {"Name": "sls-svc-prod-WorkerLambdaFunctionQualifiedArn"}
+    }
+  }
+}

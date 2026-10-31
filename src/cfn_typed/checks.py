@@ -9,6 +9,7 @@ The result maps the name of each check that found something to its problems, one
 - `limits`: CloudFormation quotas and naming rules (`cfn_typed.limits`);
 - `values`: `Fn::FindInMap` keys, `Fn::Select` indexes and parameter defaults (`cfn_typed.values`);
 - `iam`: unknown actions, resources of the wrong service, S3 bucket-versus-object ARNs (`cfn_typed.iam`);
+- `asl`: the state graph of each state machine whose definition is written out in the template (`cfn_typed.asl`);
 - `lifecycle`: Lambda runtimes past their deprecation date (`cfn_typed.lifecycle`; `today` is for tests);
 - any `rules` the company passes (`cfn_typed.query` helps to write them), each under its function name;
 - `constraints`, `attributes` and `combinations`: values, `Fn::GetAtt` names and "one of / needs" property combinations
@@ -21,6 +22,7 @@ from datetime import date
 from types import ModuleType
 from typing import Any
 
+from cfn_typed.asl import find_state_machine_problems
 from cfn_typed.attributes import find_attribute_problems
 from cfn_typed.combinations import find_combination_problems
 from cfn_typed.constraints import find_constraint_problems
@@ -51,6 +53,7 @@ def find_all_problems(
         "limits": find_limit_problems(template, inline=inline),
         "values": find_value_problems(template, defaults=defaults),
         "iam": find_iam_problems(template),
+        "asl": find_state_machine_problems(template),
         "lifecycle": find_lifecycle_problems(template, today=today, defaults=defaults),
         "constraints": find_constraint_problems(template, types, defaults=defaults) if types is not None else [],
         "attributes": find_attribute_problems(template, types) if types is not None else [],

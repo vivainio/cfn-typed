@@ -188,7 +188,7 @@ mode) have none. It is also sometimes stricter than CloudFormation; see `unconst
 ## More checks on the finished template
 
 ```python
-from cfn_typed.testing import assert_attributes_exist, assert_combinations_valid, assert_iam_valid, assert_nothing_unused, assert_runtimes_supported, assert_values_valid, assert_within_limits
+from cfn_typed.testing import assert_attributes_exist, assert_combinations_valid, assert_iam_valid, assert_nothing_unused, assert_runtimes_supported, assert_state_machines_valid, assert_values_valid, assert_within_limits
 
 def test_orders_checks() -> None:
     template = build("prod")
@@ -199,10 +199,11 @@ def test_orders_checks() -> None:
     assert_iam_valid(template)                    # known actions, matching resources, S3 bucket vs object ARN
     assert_within_limits(template)                # 500 resources, 200 parameters, logical ID names, size
     assert_nothing_unused(template)               # no idle parameter, condition or mapping
+    assert_state_machines_valid(template)         # Next/Catch targets exist, nothing unreachable, no loop without exit
 ```
 
 To run all of them at once, `assert_template_ok(template, acme_cfn)` calls every check and lists each problem under
-the check that found it (`[references]`, `[unused]`, `[limits]`, `[constraints]`, `[attributes]`, `[combinations]`, `[values]`, `[lifecycle]`, `[iam]`, and one per company rule); leave out `types`
+the check that found it (`[references]`, `[unused]`, `[limits]`, `[constraints]`, `[attributes]`, `[combinations]`, `[values]`, `[lifecycle]`, `[iam]`, `[asl]`, and one per company rule); leave out `types`
 to skip the two schema checks, or pass `unused=False`. `find_all_problems` returns the same as a dict.
 
 `assert_combinations_valid` reads the `RULES` table: the registry's `oneOf`, `anyOf` and `dependencies` where they say which
@@ -230,3 +231,19 @@ over the same committed files.
 The rendered files are also the natural place to follow the migration advice from the
 [Jsonnet comparison](https://vivainio.github.io/articles/infrastructure/python-typeddict-cloudformation/):
 render the old template and the new one, diff them, and expect an empty change set.
+
+## State machines
+
+`cfn_typed.asl` has the ASL spec as closed `TypedDict`s (`Definition`, `TaskState`, `ChoiceState`, `MapState`, ...), so
+a misspelled key or a `Choice` with a `Next` is an error in the editor, and `find_asl_problems(definition)` checks
+the graph: every `Next`, `Default` and `Catch` target exists in its scope (a `Parallel` branch or `Map` item processor
+is its own scope), names are unique, nothing is unreachable, every state can reach an end, `Retry` and `Catch` entries
+are well formed (`States.ALL` alone and last, known `States.*` names, numbers in range), and a `Wait` has exactly one
+duration. It reads a `Definition` object, or a literal `DefinitionString` (a plain JSON string, or `Fn::Sub` of one);
+a definition built with other intrinsics cannot be read and is skipped. `assert_state_machine_valid(definition)` and
+`assert_state_machines_valid(template)` fail with one line per problem.
+
+Building the machine is left to you: a polling loop or a shared retry policy is a Python function that returns
+states, and the check tells you if you wired it wrong. To start from an existing machine,
+`cfn-typed import --definitions` writes each `DefinitionString` as a `Definition` object (the output then differs
+from the original template in that property, so the exact round trip does not hold for it).

@@ -16,6 +16,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+from cfn_typed.asl import find_asl_problems, find_state_machine_problems
 from cfn_typed.attributes import find_attribute_problems
 from cfn_typed.checks import Rule, find_all_problems
 from cfn_typed.combinations import find_combination_problems
@@ -129,6 +130,20 @@ def assert_within_limits(template: Mapping[str, Any], *, inline: bool = False) -
     problems = find_limit_problems(template, inline=inline)
     if problems:
         raise AssertionError("the template is outside CloudFormation's limits:\n" + "\n".join(f"  {p}" for p in problems))
+
+
+def assert_state_machine_valid(definition: Mapping[str, Any]) -> None:
+    """Fail if the state machine `definition` has a dangling transition, an unreachable state, a loop with no exit, a bad `Retry` or `Catch`, or similar. See `cfn_typed.asl`."""
+    problems = find_asl_problems(definition)
+    if problems:
+        raise AssertionError("the state machine is not sound:\n" + "\n".join(f"  {p}" for p in problems))
+
+
+def assert_state_machines_valid(template: Mapping[str, Any]) -> None:
+    """`assert_state_machine_valid` for every state machine whose definition is written out in `template`."""
+    problems = find_state_machine_problems(template)
+    if problems:
+        raise AssertionError("the template has unsound state machines:\n" + "\n".join(f"  {p}" for p in problems))
 
 
 def assert_nothing_unused(template: Mapping[str, Any]) -> None:

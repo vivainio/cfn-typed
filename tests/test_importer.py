@@ -77,3 +77,30 @@ def test_cli_import_missing_file(tmp_path) -> None:
 def test_typegen_template_skips_custom_resources() -> None:
     assert typegen.template_types(FIXTURE) == sorted(t for t in typegen.template_types(FIXTURE) if not t.startswith("Custom::"))
     assert "Custom::Cleanup" not in typegen.template_types(FIXTURE)
+
+
+def machine_template(definition) -> dict:
+    return {"Resources": {"Machine": {"Type": "AWS::StepFunctions::StateMachine", "Properties": {"RoleArn": "r", "DefinitionString": definition}}}}
+
+
+def test_definitions_become_objects_only_when_asked() -> None:
+    body = json.dumps({"StartAt": "A", "States": {"A": {"Type": "Task", "Resource": "arn:${Name}", "End": True}}})
+    template = machine_template({"Fn::Sub": body})
+    assert "DefinitionString" in importer.to_python(template, "t")  # the default keeps the round trip exact
+    out = importer.structure_definitions(template)["Resources"]["Machine"]["Properties"]
+    assert "DefinitionString" not in out
+    assert out["Definition"]["States"]["A"]["Resource"] == {"Fn::Sub": "arn:${Name}"}
+    assert out["Definition"]["States"]["A"]["Type"] == "Task"  # a string without `${` stays a plain string
+    assert "Definition" in importer.to_python(template, "t", definitions=True) and "DefinitionString" not in importer.to_python(template, "t", definitions=True)
+
+
+def test_definitions_leave_a_literal_string_literal() -> None:
+    body = json.dumps({"StartAt": "A", "States": {"A": {"Type": "Pass", "Result": "${kept}", "End": True}}})
+    out = importer.structure_definitions(machine_template(body))["Resources"]["Machine"]["Properties"]
+    assert out["Definition"]["States"]["A"]["Result"] == "${kept}"  # no Fn::Sub around it, so no substitution
+
+
+@pytest.mark.parametrize("definition", ["{not json", {"Fn::Join": ["", ["{}"]]}, {"Fn::Sub": ["{}", {"a": "b"}]}, "[1]"])
+def test_definitions_leave_what_they_cannot_read(definition) -> None:
+    template = machine_template(definition)
+    assert importer.structure_definitions(template) == template

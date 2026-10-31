@@ -74,3 +74,39 @@ SAM does the packaging side that [patterns](serverless.md) leave out (`sam build
 fill in `CodeUri`), and it expands to resources you do not see until deploy. Use SAM types when you want that
 workflow with checked properties. Use the plain `function` pattern when you want the exact resources in the
 template, as for the [Serverless Framework](serverless.md#moving-an-existing-service) migration, with logical IDs you choose.
+
+## SAM without SAM: `expand`
+
+`sam.expand(template)` does the transform in Python. It takes a template of `serverless.*` resources (and `Globals`)
+and returns plain CloudFormation: no `Transform`, no `Globals`, and no mention of SAM anywhere in it. The function,
+its role, the event source mappings, rules and routes are ordinary resources you can read, diff and check before
+you deploy, and the stack deploys in an account or pipeline where transforms are not allowed.
+
+```python
+from cfn_typed_sumo import sam
+
+template = sam.expand(build())   # build() returns the SAM template from above
+```
+
+It covers a fixed subset, the SAM release the types are pinned to, and says so when you go outside it:
+
+| SAM | Becomes |
+|---|---|
+| `Function` (S3 `CodeUri`, `Environment`, `Policies`, `Tags`, ...) | `Lambda::Function` and `IAM::Role` (`{Name}`, `{Name}Role`) |
+| `SQS` event | `Lambda::EventSourceMapping` `{Name}{Event}`, and the SQS execution policy on the role |
+| `Schedule` event | `Events::Rule` `{Name}{Event}` and `Lambda::Permission` `{Name}{Event}Permission` |
+| `HttpApi` event | `ApiGatewayV2` `Api`, `Integration`, `Route`, `Stage` and the invoke permission, one API per function, from the [`http_api`](http-api.md) pattern |
+| `SimpleTable` | `DynamoDB::Table`, on-demand unless `ProvisionedThroughput` is given |
+| `Globals.Function`, `IgnoreGlobals` | merged into each function (`Environment.Variables` and `Tags` are merged, other keys replaced) |
+
+Anything else (`Connectors`, other event types and resources, a local `CodeUri` that needs packaging, properties not
+listed above) raises `NotImplementedError` naming it, rather than being dropped. Resources that are not
+`AWS::Serverless::*` pass through unchanged.
+
+The logical IDs of the function, role, mappings, rules and permissions are the ones SAM generates, so a stack
+deployed with the transform can move to the expanded template without replacing those resources. The HTTP API is
+not: SAM puts every route in one `ServerlessHttpApi` built from an OpenAPI document, and `expand` makes plain
+resources instead, so that part is replaced. It also leaves out SAM's `lambda:createdBy` tag.
+
+The test suite checks this against AWS's own translator (`aws-sam-translator`, a dev dependency pinned to the same
+release as the types): each resource `expand` makes, with the same logical ID, has to equal what SAM makes for it.

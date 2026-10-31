@@ -8,9 +8,10 @@ header, `Globals`, and typed builders for the event sources that are easy to get
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
-from cfn_typed_sumo.types import serverless
-
 from cfn_typed import AnyStatement, Expr, Resources, Template, policy_document
+
+from cfn_typed_sumo.sam_expand import expand
+from cfn_typed_sumo.types import serverless
 
 SAM_TRANSFORM = "AWS::Serverless-2016-10-31"
 
@@ -115,4 +116,4 @@ def connect(
     )}
 
 
-__all__ = ["SAM_TRANSFORM", "connect", "function", "http_api_event", "schedule_event", "sqs_event", "table", "template"]
+__all__ = ["SAM_TRANSFORM", "connect", "expand", "function", "http_api_event", "schedule_event", "sqs_event", "table", "template"]

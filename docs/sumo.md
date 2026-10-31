@@ -5,7 +5,9 @@ the permission names. Its API is meant to stay **reliable**, and changes to it a
 
 `cfn-typed-sumo` is the other half: a **fat pattern library** built from the same repository, on top of
 `cfn-typed`. It brings the generated types and a growing set of ready-made patterns, so you can
-start from working building blocks instead of copying code out of the book.
+start from working building blocks instead of copying code out of the book. Because the types for the
+core services come pre-generated, it is also the quickest way to **try things out**: install it and start
+writing templates, with no `cfn-typegen` step and no config.
 
 ```sh
 uv add cfn-typed-sumo        # brings cfn-typed with it; nothing to generate first

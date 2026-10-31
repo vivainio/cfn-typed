@@ -119,7 +119,8 @@ See the book.
 ## cfn-typed-sumo: the fat pattern library
 
 This repository also publishes `cfn-typed-sumo`, a second package on top of `cfn-typed`: the generated
-types for the core services plus ready-made patterns, with nothing to generate first.
+types for the core services plus ready-made patterns, with nothing to generate first. The lots of
+pre-generated types make it the quickest way to try things out.
 
 ```sh
 uv add cfn-typed-sumo

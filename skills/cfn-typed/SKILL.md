@@ -1,110 +1,127 @@
 ---
 name: cfn-typed
-description: Write, check and migrate AWS CloudFormation as typed Python with cfn-typed. Use when a project has or needs CloudFormation templates, when moving a Serverless Framework (serverless.yml) or other existing stack to code, or when the user mentions cfn-typed, cfn-typegen or typed CloudFormation.
+description: Write, check and render AWS CloudFormation as typed Python with cfn-typed and its construct library cfn-typed-sumo. Use when a project has or needs CloudFormation templates, when the user wants infrastructure as typed code without CDK, or when they mention cfn-typed, cfn-typed-sumo or cfn-typegen.
 ---
 
 # cfn-typed
 
-CloudFormation templates as plain Python dicts, with resource factories and `TypedDict`s generated from the official
-CloudFormation registry schemas. A type checker (`ty`, mypy, pyright) catches misspelled properties, wrong types and
-missing required properties before CloudFormation does. The output is ordinary template JSON/YAML: no synth step, no
-hashed logical IDs, no runtime beyond Python 3.14+.
+CloudFormation templates as plain Python dicts. Resource factories and their `TypedDict`s are generated from the
+official CloudFormation registry schemas, so a type checker (`ty`, mypy, pyright) catches misspelled properties, wrong
+types and missing required properties before CloudFormation does. The output is ordinary template JSON/YAML: no synth
+step, no hashed logical IDs, Python 3.14+.
 
-Run `cfn-typed --help` and `cfn-typegen --help` for the exact options; they are the source of truth.
+Two packages:
 
-Resource files live in this skill's directory (`cfn-typed skill` prints where; `cfn-typed skill --dir` prints just the path):
-[resources/serverless-ids.md](resources/serverless-ids.md) (the logical IDs the Serverless Framework generates, and which
-ones always differ) and [resources/change-set.md](resources/change-set.md) (reviewing a change set before executing it).
-
-## Setup
+- **`cfn-typed`**: the stable core. Generated types, intrinsics, rendering, permission names, the `cfn-typed` command.
+- **`cfn-typed-sumo`**: constructs (ready-made building blocks) and pre-generated types for the common services.
+  Opinionated and volatile: names, signatures and defaults change between releases, so pin the version.
 
 ```sh
-uv add cfn-typed            # add 'cfn-typed[yaml]' for YAML output and YAML input
+uv add cfn-typed-sumo        # brings cfn-typed; no cfn-typegen step for the common services
 uv add --dev ty
-cfn-typegen --out cfn_types AWS::SQS::Queue 'AWS::Lambda::*'     # generate only the types you use
-cfn-typegen --out cfn_types --template template.json             # ...or the types an existing template uses
-cfn-typegen search load balancer                                 # find a type name
 ```
 
-The package ships no resource types: generate them into the project. One module per service (`cfn_types/sqs.py`,
-`cfn_types/lambda_.py`; Python keywords get a trailing `_`). Rerunning replaces earlier generated files.
+## Core constructs: start here
 
-## Writing a template
+A construct is an ordinary function returning one resource, a `Resources` dict, or a **handle** (a small dataclass with
+a `resources` field and the logical IDs and references you need, such as `orders.queue_arn`). Logical IDs come from the
+`name` argument and are documented, never generated behind your back. Combine pieces with `cfn.combine(...)`, which takes
+dicts and handles and refuses to silently overwrite a logical ID.
+
+| Construct (`cfn_typed_sumo...`) | Creates | Handle / notes |
+|---|---|---|
+| `constructs.function(name, code=, handler=, runtime=, memory=, timeout=, environment=, statements=)` | Lambda `{name}`, role `{name}Role`, log group `{name}Logs` | `.function`, `.role`, `.log_group`; `statements` become the role's policy |
+| `queue_with_dlq(name, visibility_timeout=, max_receive_count=)` | `{name}Queue`, `{name}DLQ` | `.queue_arn`, `.queue_url`, `.dlq_url` |
+| `sqs_event_source(function_logical, queue_arn)` | Lambda event source mapping from a queue | one resource |
+| `constructs.schedule(name, "cron(...)", function_logical)` | EventBridge rule and invoke permission | `{name}Rule`, `{name}Permission` |
+| `constructs.invoke_permission(function_logical, principal, source_arn)` | Lambda permission for a service | one resource |
+| `storage.dynamodb_table("pk", "sk", gsis=)` | on-demand table, point-in-time recovery, deletion protection on | one resource; keys are `"name"` or `("name", "N")` |
+| `storage.encryption_key(name, alias=)` | KMS key with rotation and alias | `{name}Key`, `{name}KeyAlias` |
+| `storage.secure_bucket(name, key_arn=)` | private encrypted bucket and policy | `{name}Bucket`, `{name}BucketPolicy` |
+| `http_api(name, function=, routes=["GET /orders"], jwt=)` | HTTP API to a Lambda, optional JWT authorizer | `.api_id`, `.endpoint` |
+| `integrations.api_to_lambda(name, function_logical)` | REST API proxying to a Lambda | `Resources` |
+| `integrations.event_to_lambda(name, function_logical, pattern= or schedule=)` | EventBridge rule to a Lambda | `Resources` |
+| `integrations.stream_trigger(name, function_logical, table_logical)` | DynamoDB stream to a Lambda | handle |
+| `integrations.bucket_to_lambda(name, function_logical, bucket_name=)` | bucket that invokes a Lambda | `Resources` |
+| `integrations.fan_out(name, subscribers)` | one topic, a queue plus DLQ per subscriber | `Resources` |
+| `constructs.lambda_errors_alarm(function_logical)`, `queue_backlog_alarm(queue, threshold=)`, `alarm_topic(name, emails)` | CloudWatch alarms and notification topic | |
+| `constructs.vpc`, `fargate_service`, `loadbalancer.*`, `static_site` | networking, containers, web | see the book's pattern catalog |
+
+[resources/example-service.py](resources/example-service.py) assembles a queue, a function, an SQS trigger, a schedule, a
+table and an alarm. Copy it as a starting point.
+
+If no construct fits, use the generated factory directly, or copy a construct and change it (they are short):
 
 ```python
 import cfn_typed as cfn
-from cfn_types import sqs
+from cfn_typed_sumo.types import sqs        # generated types, public; others via cfn-typegen
 
-def build() -> cfn.Template:
-    return {
-        "Resources": {
-            "DLQ": sqs.queue(),
-            "Queue": sqs.queue(
-                VisibilityTimeout=180,
-                RedrivePolicy={"deadLetterTargetArn": cfn.get_att("DLQ", "Arn"), "maxReceiveCount": 3},
-            ),
-        },
-    }
+"Queue": sqs.queue(VisibilityTimeout=180, RedrivePolicy={"deadLetterTargetArn": cfn.get_att("DLQ", "Arn"), "maxReceiveCount": 3})
 ```
 
-- A factory is `service.snake_case_resource(**Properties)`; properties keep CloudFormation's PascalCase names.
+- A factory is `service.snake_case_resource(**Properties)`; properties keep CloudFormation's PascalCase names, and
+  nested objects are plain dict literals that the checker validates.
 - Resource attributes are snake_case keywords: `depends_on`, `deletion_policy`, `update_replace_policy`, `condition`,
-  `metadata`. They cannot collide with a property name.
-- Nested objects are plain dict literals; the checker validates them against the generated `TypedDict`s.
-- Intrinsics are builders returning the plain dict CloudFormation expects: `cfn.ref`, `cfn.get_att`, `cfn.sub`,
-  `cfn.join`, `cfn.select`, `cfn.split`, `cfn.find_in_map`, `cfn.if_`, `cfn.get_azs`, `cfn.base64`, `cfn.cidr`,
-  `cfn.import_value`; conditions use `cfn.equals`, `cfn.and_`, `cfn.or_`, `cfn.not_`, `cfn.condition_ref`.
-  Pseudo parameters are `cfn.ref("AWS::Region")`.
-- `cfn.Params` declares template parameters once (plain or SSM-backed) and returns the `Ref`.
-- Render with `cfn.to_json(template)` or `cfn.to_yaml(template)`.
-- IAM action names: `from cfn_typed.permissions import Sqs` then `Sqs.ReceiveMessage` (a typo is an attribute error).
-  `cfn_typed.policy` builds statements (`allow`, `deny`); `cfn_typed.grants` is the CDK's permission sets (an opinion
-  layer that may change between releases: pin the version if you use it).
+  `metadata`.
+- Intrinsics are builders that return the plain dict: `cfn.ref`, `cfn.get_att`, `cfn.sub`, `cfn.join`, `cfn.select`,
+  `cfn.split`, `cfn.find_in_map`, `cfn.if_`, `cfn.get_azs`, `cfn.base64`, `cfn.cidr`, `cfn.import_value`; conditions
+  `cfn.equals`, `cfn.and_`, `cfn.or_`, `cfn.not_`, `cfn.condition_ref`. Pseudo parameters: `cfn.ref("AWS::Region")`.
+- `cfn.Params()` declares template parameters once (plain or SSM-backed) and returns the `Ref`; put
+  `params.declarations()` under `"Parameters"`.
+- IAM: `from cfn_typed.permissions import Sqs` gives `Sqs.ReceiveMessage` (a typo is an attribute error);
+  `cfn.allow(...)`/`cfn.deny(...)` build statements; `cfn_typed.grants` has the CDK's permission sets, e.g.
+  `grants.Sqs.Queue.consume_messages.on(queue_arn)`. Grants are an opinion layer: pin the version.
+- Render: `cfn.to_json(template)`, `cfn.to_yaml(template)` (needs `cfn-typed[yaml]`).
 
-## Checking
+## The command line
+
+Types for a service the sumo package does not ship, or for a package without sumo:
 
 ```sh
-ty check                                  # types: the main safety net
-cfn-typed check template.yaml             # references, unused parameters, quotas, IAM names, Lambda runtimes
-cfn-typed check template.yaml --schemas cfn_types      # plus the registry schema constraints
-cfn-typed ls template.yaml -t lambda      # resources: logical id, type, name
-cfn-typed emit template.yaml -f json      # convert between JSON and YAML
-cfn-typed diff rendered/ template.yaml    # compare with the committed rendered/template.yaml
+cfn-typegen --out cfn_types AWS::SQS::Queue 'AWS::Lambda::*'     # only what you use; rerun to regenerate
+cfn-typegen --out cfn_types --template template.json             # the types an existing template uses
+cfn-typegen search load balancer                                 # find a type name
 ```
 
-Commit the rendered YAML and have CI assert the code still renders exactly that:
-`cfn_typed.testing.assert_matches_file(template, "rendered/stack.yaml")`; `CFN_TYPED_UPDATE=1` accepts an intended change.
-To give your own program these subcommands, call `cfn_typed.cli.main(stacks, schemas=cfn_types)` from your `main()`.
+One module per service (`cfn_types/sqs.py`, `cfn_types/lambda_.py`; keywords get a trailing `_`). Never hand-edit them.
 
-## Migrating an existing stack (Serverless Framework, CDK, SAM, hand-written)
+`cfn-typed` works on template files (JSON, or YAML with `cfn-typed[yaml]`), so it also checks templates it did not write:
 
-The aim is a change set that shows **no changes**. Import the CloudFormation that exists today, not the source config.
+```sh
+ty check                                          # types: the main safety net
+cfn-typed check template.yaml                     # references, unused parameters, quotas, IAM names, Lambda runtimes
+cfn-typed check template.yaml --schemas cfn_types # plus registry schema constraints (needs generated types)
+cfn-typed ls template.yaml -t lambda              # resources: logical id, type, name
+cfn-typed emit template.yaml -f json              # convert JSON and YAML either way
+cfn-typed diff rendered/ template.yaml            # compare with the committed rendered/template.yaml
+cfn-typed import template.json -o stack.py        # existing template -> typed Python (see below)
+cfn-typed skill                                   # print this skill, and where its directory is
+```
 
-1. Capture the template: `sls package` and take `.serverless/cloudformation-template-update-stack.json`, or
-   `aws cloudformation get-template --stack-name NAME --query TemplateBody`.
-2. `cfn-typegen --out cfn_types --template captured.json`  (`Custom::*` resources are skipped: they have no schema).
-3. `cfn-typed import captured.json -o stack.py` writes a `build() -> cfn.Template`: resources become factory calls,
-   intrinsics become `cfn.*` builders, logical IDs and values are kept, so it renders back to the same template.
-   Anything a factory cannot express (`Custom::*`, `CreationPolicy`, `UpdatePolicy`, property names that are not
-   identifiers) stays a plain dict with a comment saying why; the file header lists them.
-4. Prove equality: `cfn-typed emit stack.py`-style rendering via your `main()`, or in a test
-   `assert build() == json.load(open("captured.json"))`. Run `ty check`.
-5. Create a change set **without executing it** and read it before executing:
-   `aws cloudformation deploy --no-execute-changeset ...` then `aws cloudformation describe-change-set ...`.
-6. Only then refactor (extract helpers, parameters, shared defaults), re-checking the diff after each step.
+To give your own program the same subcommands (`emit`, `check`, `diff`, `ls`) for the stacks it builds, call
+`cfn_typed.cli.main({"orders-prod": build_prod}, schemas=cfn_types)` from its `main()`.
 
-Rules that prevent outages:
-- **Never change a logical ID on a stateful resource** (DynamoDB table, S3 bucket, SQS queue, RDS, Kinesis). A new ID is
-  a replacement, which deletes the old resource. Set `deletion_policy="Retain"` first, and use `import` for moves.
-- Stateless resources (functions, log groups, permissions) may be replaced if the ID changes; still read the change set.
-- The Serverless Framework also does packaging and upload (zip, deployment bucket, a new Lambda version per deploy).
-  cfn-typed does not: `Code` points at an object you uploaded (`aws s3 cp` or CI), and you deploy with
-  `aws cloudformation deploy`. Say so to the user when a project relies on `sls deploy` doing that for it.
-- The importer keeps the framework's generated names (`WorkerLambdaFunction`, `ServerlessDeploymentBucket`). That is
-  deliberate: renaming them is a separate, reviewed change.
+**Test by rendering.** Commit the rendered YAML and have CI assert the code still renders exactly that:
+`cfn_typed.testing.assert_matches_file(template, "rendered/stack.yaml")`; rerun with `CFN_TYPED_UPDATE=1` to accept an
+intended change.
 
-## Do not
+**Deploy** with the AWS CLI; cfn-typed only produces the template (it does not package or upload code):
+`aws cloudformation deploy --template-file template.json --stack-name NAME`. To review first, use a change set:
+[resources/change-set.md](resources/change-set.md).
 
-- Do not hand-edit generated files in `cfn_types/`; regenerate them.
-- Do not invent property or type names: run `cfn-typegen search`, or read the generated module.
+## Taking over an existing template
+
+`cfn-typed import template.json -o stack.py` writes a `build() -> cfn.Template` that renders back to the same template:
+factory calls for resources, `cfn.*` builders for intrinsics, logical IDs and values untouched. What a factory cannot
+express (`Custom::*`, `CreationPolicy`, `UpdatePolicy`, property names that are not identifiers) stays a plain dict with a
+comment; the file header lists them. Generate the types first with `cfn-typegen --template`. Prove the result with
+`assert build() == json.load(open("template.json"))`, run `ty check`, and review a change set before any deploy.
+
+## Rules
+
+- **Never change the logical ID of a stateful resource** (table, bucket, queue, database, stream): a new ID is a
+  replacement, which deletes the old resource. Set `deletion_policy="Retain"` first; use a resource import to move.
+- Do not invent property or type names: `cfn-typegen search`, or read the generated module.
 - Do not execute a change set the user has not seen.
+- Constructs are opinions: when a default does not suit the user (retention, encryption, tags), pass the argument or
+  copy and change the construct, rather than working around it after rendering.

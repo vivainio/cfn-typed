@@ -8,7 +8,7 @@ aws cloudformation describe-change-set --stack-name NAME --change-set-name <name
     --output table
 ```
 
-Read it for: any `Remove` or `Replacement: True` on a stateful resource (stop), and anything that is not the
-per-deploy noise listed in [serverless-ids.md](serverless-ids.md). Execute with
+Read it for: any `Remove` or `Replacement: True` on a stateful resource such as a table, bucket or queue (stop), and
+any change you did not intend. Execute with
 `aws cloudformation execute-change-set --stack-name NAME --change-set-name <name>` only after the user has seen it.
 Delete an unwanted one with `aws cloudformation delete-change-set`.

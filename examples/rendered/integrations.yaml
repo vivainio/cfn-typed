@@ -1,0 +1,611 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  ZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: Hosted zone for the DNS aliases
+  WorkerImage:
+    Type: String
+    Description: Container image of the worker
+  Subnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets of the load balancer and the worker
+  WorkerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security group of the worker
+Resources:
+  Orders:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      DeletionProtectionEnabled: false
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: processor-lambda
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:CreateLogGroup
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/processor*:*
+              - Effect: Allow
+                Action:
+                  - dynamodb:DescribeStream
+                  - dynamodb:GetRecords
+                  - dynamodb:GetShardIterator
+                Resource: !GetAtt Orders.StreamArn
+              - Effect: Allow
+                Action: dynamodb:ListStreams
+                Resource: '*'
+  Processor:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: |
+          def handler(event, context):
+              return {'statusCode': 200, 'body': 'ok'}
+      Handler: index.handler
+      Role: !GetAtt Role.Arn
+      Runtime: python3.13
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Subnets: !Ref Subnets
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: fixed-response
+          FixedResponseConfig:
+            StatusCode: '404'
+  Lake:
+    Type: AWS::S3::Bucket
+  InboxDLQ:
+    Type: AWS::SQS::Queue
+  InboxQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 30
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt InboxDLQ.Arn
+        maxReceiveCount: 3
+  ChangesStreamMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      FunctionName: !GetAtt Processor.Arn
+      EventSourceArn: !GetAtt Orders.StreamArn
+      StartingPosition: LATEST
+      BatchSize: 100
+      BisectBatchOnFunctionError: true
+      MaximumRetryAttempts: 3
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  SiteOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-Site
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+  SiteDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        HttpVersion: http2and3
+        DefaultRootObject: index.html
+        Origins:
+          - Id: site
+            DomainName: !GetAtt SiteBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt SiteOAC.Id
+            S3OriginConfig: {}
+        DefaultCacheBehavior:
+          TargetOriginId: site
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          Compress: true
+  SiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Join
+              - ''
+              - - !GetAtt SiteBucket.Arn
+                - /*
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Sub
+                  - arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${D}
+                  - D: !Ref SiteDistribution
+  WebApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub ${AWS::StackName}-Web
+      Description: Web proxy to Processor
+  WebProxy:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref WebApi
+      ParentId: !GetAtt WebApi.RootResourceId
+      PathPart: '{proxy+}'
+  WebProxyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WebApi
+      ResourceId: !Ref WebProxy
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${Fn}/invocations
+          - Fn: !GetAtt Processor.Arn
+  WebRootMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WebApi
+      ResourceId: !GetAtt WebApi.RootResourceId
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${Fn}/invocations
+          - Fn: !GetAtt Processor.Arn
+  WebInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref Processor
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub
+        - arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${A}/*/*/*
+        - A: !Ref WebApi
+  WebDeployment:
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref WebApi
+    DependsOn:
+      - WebProxyMethod
+      - WebRootMethod
+  WebStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref WebApi
+      DeploymentId: !Ref WebDeployment
+      StageName: prod
+  LookupApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub ${AWS::StackName}-Lookup
+      Description: Lookup reads Orders
+  LookupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: Lookup-read
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:GetItem
+                Resource: !GetAtt Orders.Arn
+  LookupItems:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref LookupApi
+      ParentId: !GetAtt LookupApi.RootResourceId
+      PathPart: items
+  LookupItem:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref LookupApi
+      ParentId: !Ref LookupItems
+      PathPart: '{id}'
+  LookupGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref LookupApi
+      ResourceId: !Ref LookupItem
+      HttpMethod: GET
+      AuthorizationType: NONE
+      RequestParameters:
+        method.request.path.id: true
+      MethodResponses:
+        - StatusCode: '200'
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:dynamodb:action/GetItem
+        Credentials: !GetAtt LookupRole.Arn
+        RequestTemplates:
+          application/json: !Sub
+            - '{"TableName": "${T}", "Key": {"pk": {"S": "$input.params(''id'')"}}}'
+            - T: !Ref Orders
+        IntegrationResponses:
+          - StatusCode: '200'
+  LookupDeployment:
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref LookupApi
+    DependsOn:
+      - LookupGetMethod
+  LookupStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref LookupApi
+      DeploymentId: !Ref LookupDeployment
+      StageName: prod
+  ApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref Processor
+      Principal: elasticloadbalancing.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:targetgroup/api-processor/*
+  ApiTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: api-processor
+      TargetType: lambda
+      Targets:
+        - Id: !GetAtt Processor.Arn
+    DependsOn: ApiInvokePermission
+  ApiRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref Listener
+      Priority: 10
+      Conditions:
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - /api/*
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref ApiTargetGroup
+  ApiDns:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref ZoneId
+      Name: api.example.com
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt LoadBalancer.DNSName
+        HostedZoneId: !GetAtt LoadBalancer.CanonicalHostedZoneID
+        EvaluateTargetHealth: true
+  SiteDns:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref ZoneId
+      Name: www.example.com
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt SiteDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+        EvaluateTargetHealth: false
+  NoticeTopic:
+    Type: AWS::SNS::Topic
+  BillingDLQ:
+    Type: AWS::SQS::Queue
+  BillingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 30
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt BillingDLQ.Arn
+        maxReceiveCount: 3
+  BillingQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref BillingQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt BillingQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn:
+                  - !Ref NoticeTopic
+  BillingQueueNoticeTopicSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref NoticeTopic
+      Protocol: sqs
+      Endpoint: !GetAtt BillingQueue.Arn
+      RawMessageDelivery: true
+  ShippingDLQ:
+    Type: AWS::SQS::Queue
+  ShippingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 30
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ShippingDLQ.Arn
+        maxReceiveCount: 3
+  ShippingQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref ShippingQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt ShippingQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn:
+                  - !Ref NoticeTopic
+  ShippingQueueNoticeTopicSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref NoticeTopic
+      Protocol: sqs
+      Endpoint: !GetAtt ShippingQueue.Arn
+      RawMessageDelivery: true
+  NightlyRule:
+    Type: AWS::Events::Rule
+    Properties:
+      State: ENABLED
+      Targets:
+        - Id: Processor
+          Arn: !GetAtt Processor.Arn
+      ScheduleExpression: cron(0 2 * * ? *)
+  NightlyInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref Processor
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt NightlyRule.Arn
+  CreatedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      State: ENABLED
+      Targets:
+        - Id: InboxQueue
+          Arn: !GetAtt InboxQueue.Arn
+      EventPattern:
+        source:
+          - shop
+        detail-type:
+          - OrderCreated
+  CreatedPolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref InboxQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt InboxQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt CreatedRule.Arn
+  UploadsInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref Processor
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub arn:${AWS::Partition}:s3:::acme-uploads
+  UploadsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: acme-uploads
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt Processor.Arn
+    DependsOn: UploadsInvokePermission
+  EventsLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 30
+  EventsLogStream:
+    Type: AWS::Logs::LogStream
+    Properties:
+      LogGroupName: !Ref EventsLogs
+      LogStreamName: DestinationDelivery
+  EventsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action:
+              - sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: Events-deliver
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetBucketLocation
+                  - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                Resource: !GetAtt Lake.Arn
+              - Effect: Allow
+                Action:
+                  - s3:AbortMultipartUpload
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Join
+                  - ''
+                  - - !GetAtt Lake.Arn
+                    - /*
+              - Effect: Allow
+                Action: logs:PutLogEvents
+                Resource: !GetAtt EventsLogs.Arn
+  EventsStream:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamType: DirectPut
+      ExtendedS3DestinationConfiguration:
+        BucketARN: !GetAtt Lake.Arn
+        RoleARN: !GetAtt EventsRole.Arn
+        Prefix: firehose/
+        ErrorOutputPrefix: firehose/errors/
+        CompressionFormat: GZIP
+        BufferingHints:
+          IntervalInSeconds: 300
+          SizeInMBs: 64
+        CloudWatchLoggingOptions:
+          Enabled: true
+          LogGroupName: !Ref EventsLogs
+          LogStreamName: DestinationDelivery
+    DependsOn: EventsLogStream
+  WorkerCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+  WorkerLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 30
+  WorkerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+  WorkerTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+  WorkerTask:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: Worker
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt WorkerExecutionRole.Arn
+      TaskRoleArn: !GetAtt WorkerTaskRole.Arn
+      ContainerDefinitions:
+        - Name: Worker
+          Image: !Ref WorkerImage
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref WorkerLogs
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: Worker
+  WorkerService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref WorkerCluster
+      TaskDefinition: !Ref WorkerTask
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets: !Ref Subnets
+          SecurityGroups:
+            - !Ref WorkerSecurityGroup
+          AssignPublicIp: DISABLED
+      DeploymentConfiguration:
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true

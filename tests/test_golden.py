@@ -15,12 +15,13 @@ sys.path.insert(0, str(EXAMPLES))
 import cfn_types  # noqa: E402
 import data_consumer  # noqa: E402
 import data_platform  # noqa: E402
+import integrations_stack  # noqa: E402
 import intrinsics_demo  # noqa: E402
 import minimal  # noqa: E402
 import serverless  # noqa: E402
 import web_stack  # noqa: E402
 
-from cfn_typed.testing import assert_constraints_hold, assert_matches_file, assert_references_resolve  # noqa: E402
+from cfn_typed.testing import assert_constraints_hold, assert_matches_file, assert_references_resolve, assert_template_ok  # noqa: E402
 
 
 def check(template: Any, name: str) -> None:
@@ -57,3 +58,9 @@ def test_intrinsics_demo() -> None:
 
 def test_serverless() -> None:
     check(serverless.build(), "serverless.yaml")
+
+
+def test_integrations_stack() -> None:
+    template = integrations_stack.build()
+    check(template, "integrations.yaml")
+    assert_template_ok(template, cfn_types)  # every check, here on a stack that has no placeholder values

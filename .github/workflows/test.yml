@@ -34,3 +34,7 @@ jobs:
 
       - name: Run tests
         run: uv run pytest tests/ -v
+
+      - name: Lint the rendered examples with cfn-lint
+        # the version is pinned in the dev group of pyproject.toml; errors fail the build, warnings are printed only
+        run: uv run cfn-lint --non-zero-exit-code error examples/rendered/*.yaml

@@ -39,3 +39,14 @@ AWS::ApplicationAutoScaling::ScalingPolicy
 AWS::CloudWatch::CompositeAlarm
 AWS::Lambda::Alias
 AWS::Lambda::Version
+AWS::CloudFront::Distribution
+AWS::CloudFront::OriginAccessControl
+AWS::ApiGateway::RestApi
+AWS::ApiGateway::Resource
+AWS::ApiGateway::Method
+AWS::ApiGateway::Deployment
+AWS::ApiGateway::Stage
+AWS::KinesisFirehose::DeliveryStream
+AWS::Route53::RecordSet
+AWS::ElasticLoadBalancingV2::ListenerRule
+AWS::Logs::LogStream

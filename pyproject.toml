@@ -38,6 +38,7 @@ dev = [
     "pytest",
     "pyyaml>=6.0.3",
     "types-pyyaml>=6.0.12.20260906",
+    "cfn-lint==1.59.0",  # pinned: a new rule release must not turn CI red
 ]
 docs = ["zensical"]
 

@@ -61,6 +61,10 @@ does not contain it; it is generated when the tests run.
 | [Publishing values through SSM](publishing.md) | SSM parameters that one stack publishes and another reads |
 | [Parameters as variables](parameters.md) | template parameters (including SSM), declared once and used as variables |
 | [CDK L2 constructs as patterns](cdk-l2.md) | a Lambda function, a schedule, an SNS subscription, a VPC, a Fargate service, alarms, and auto scaling for services, Lambda aliases and tables |
+| [Web frontends](web-frontends.md) | a CloudFront static site, a REST API in front of a Lambda or a table, a Lambda behind a load balancer, DNS aliases |
+| [Messaging and events](messaging.md) | an SNS fan-out to queues with dead-letter queues, EventBridge rules to a Lambda or a queue |
+| [Data flows](data-flows.md) | a table stream into a Lambda, a bucket that invokes a Lambda, Firehose into a bucket |
+| [Fargate tasks](containers.md) | a cluster, a task and its two roles, for workers and for tasks a Lambda starts |
 | [Serverless Framework in a few lines](serverless.md) | the Serverless `functions:` example, a scheduled Lambda, as patterns |
 | [Mandatory tags](mandatory-tags.md) | nothing, but resolves and checks the tags a company requires, from service and per-resource values |
 | [Company rules](company-rules.md) | nothing, but checks the finished template against rules of your own, as one more layer on the built-in checks |

@@ -88,6 +88,12 @@ Commit the rendered YAML and let CI check that the code still renders exactly th
 `CFN_TYPED_UPDATE=1` to accept an intended change. See the book. This repo does it for its own
 examples (`examples/rendered/`).
 
+## Command line
+
+`cfn_typed.cli.main(stacks)` gives your own script `emit`, `check`, `diff` and `ls` subcommands: print or write
+templates, run every check (exit status 1 on a problem), compare with the committed files, and list resources. It is
+optional and your `main()` calls it. `cfn-typed check template.yaml` runs the same subcommands on any template file, with no Python code. See the book.
+
 ## Permission names
 
 `cfn_typed.permissions` gives IAM actions names, so `Sqs.ReceiveMessage` replaces the string

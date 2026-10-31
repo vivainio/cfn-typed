@@ -55,6 +55,7 @@ nav = [
     { "Intrinsic functions" = "rendered/intrinsics.md" },
   ] },
   { "Testing with golden templates" = "testing.md" },
+  { "A command line for your stacks" = "cli.md" },
   { "cfn-typed-sumo (fat pattern library)" = "sumo.md" },
   { "Sumo patterns (catalog)" = "sumo-patterns.md" },
   { "Distributing patterns" = "distributing.md" },

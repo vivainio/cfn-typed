@@ -26,6 +26,7 @@ Issues = "https://github.com/vivainio/cfn-typed/issues"
 
 [project.scripts]
 cfn-typegen = "cfn_typed.typegen:main"
+cfn-typed = "cfn_typed.cli:run"
 
 [project.optional-dependencies]
 yaml = [

@@ -6,11 +6,11 @@ import re
 from typing import Any
 
 import pytest
-from cfn_typed import allow, get_att
+from cfn_typed import allow, get_att, ref
 from cfn_typed.testing import assert_template_ok
 
 from cfn_typed_sumo import sam
-from cfn_typed_sumo.types import serverless, sqs
+from cfn_typed_sumo.types import dynamodb, kinesis, s3, serverless, sns, sqs
 
 
 def template() -> Any:
@@ -118,8 +118,8 @@ def test_unsupported_things_are_errors_not_silently_dropped() -> None:
         sam.expand({"Resources": {"S": {"Type": "AWS::Serverless::StateMachine", "Properties": {}}}})
     with pytest.raises(NotImplementedError, match="Tracing"):
         sam.expand({"Resources": {"F": {"Type": "AWS::Serverless::Function", "Properties": {"Handler": "h", "CodeUri": "s3://b/k", "Tracing": "Active"}}}})
-    with pytest.raises(NotImplementedError, match="Kinesis"):
-        sam.expand({"Resources": {"F": {"Type": "AWS::Serverless::Function", "Properties": {"Handler": "h", "CodeUri": "s3://b/k", "Events": {"K": {"Type": "Kinesis", "Properties": {}}}}}}})
+    with pytest.raises(NotImplementedError, match="S3"):
+        sam.expand({"Resources": {"F": {"Type": "AWS::Serverless::Function", "Properties": {"Handler": "h", "CodeUri": "s3://b/k", "Events": {"K": {"Type": "S3", "Properties": {}}}}}}})
 
 
 def test_other_resources_and_template_keys_pass_through() -> None:
@@ -127,3 +127,59 @@ def test_other_resources_and_template_keys_pass_through() -> None:
     out = sam.expand(tpl)
     assert out["Resources"] == tpl["Resources"] and out["Description"] == "d"
     assert re.fullmatch(r"\d{4}-\d\d-\d\d", out["AWSTemplateFormatVersion"])
+
+
+def connector_template(destination: Any, permissions: Any) -> Any:
+    return sam.template({
+        "Q": sqs.queue(), "B": s3.bucket(), "Topic": sns.topic(), "Table": sam.table("pk"),
+        "F": sam.function(handler="h", code_uri="s3://b/k.zip", runtime="python3.12"),
+        "G": sam.function(handler="h", code_uri="s3://b/k.zip", runtime="python3.12"),
+        **sam.connect("C", "F", destination, permissions),
+    })
+
+
+@pytest.mark.parametrize(("destination", "permissions"), [
+    ("Q", ["Read"]), ("Q", ["Write"]), ("Q", ["Read", "Write"]), ("Table", ["Read", "Write"]), ("B", ["Read"]),
+    ("B", ["Write"]), ("G", ["Write"]), ("Topic", ["Write"]), (["Q", "Table"], ["Read"]),
+])
+def test_connectors_expand_to_what_sam_makes(destination: Any, permissions: Any) -> None:
+    tpl = connector_template(destination, permissions)
+    ours, theirs = sam.expand(tpl)["Resources"], translate(tpl)
+    policies = {k for k, v in theirs.items() if v["Type"] == "AWS::IAM::ManagedPolicy"}
+    assert policies and policies <= set(ours), "logical IDs must match SAM's"
+    for key in policies:
+        theirs[key].pop("Metadata", None)  # SAM's bookkeeping, which names SAM
+        assert normal(ours[key]) == normal(theirs[key])
+    assert "SAM" not in json.dumps(sam.expand(tpl)) and "Serverless" not in json.dumps(sam.expand(tpl))
+
+
+def test_connector_outside_the_table_is_an_error() -> None:
+    tpl = sam.template({"F": sam.function(handler="h", code_uri="s3://b/k.zip"), "Topic": sns.topic(), **sam.connect("C", "F", "Topic", ["Read"])})
+    with pytest.raises(NotImplementedError, match="Read on AWS::SNS::Topic"):
+        sam.expand(tpl)
+
+
+@pytest.mark.parametrize("event", [
+    sam.sns_event(ref("Topic")),
+    sam.stream_event("Kinesis", get_att("Stream", "Arn"), batch_size=5),
+    sam.stream_event("DynamoDB", get_att("Ddb", "StreamArn"), starting_position="TRIM_HORIZON"),
+    sam.event_bridge_event({"source": ["a.b"]}),
+    sam.sqs_event(get_att("Q", "Arn"), batch_size=3),
+], ids=["sns", "kinesis", "dynamodb", "eventbridge", "sqs"])
+def test_more_events_expand_to_what_sam_makes(event: Any) -> None:
+    tpl = sam.template({
+        "Topic": sns.topic(), "Q": sqs.queue(), "Stream": kinesis.stream(ShardCount=1), "Ddb": dynamodb.table(KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}]),
+        "F": sam.function(handler="h", code_uri="s3://b/k.zip", runtime="python3.12", events={"E": event}),
+    })
+    ours, theirs = sam.expand(tpl)["Resources"], translate(tpl)
+    for logical in ("F", "FRole", "FE", "FEPermission"):
+        if logical in theirs:
+            assert logical in ours, f"{logical}: logical IDs must match SAM's"
+            assert normal(ours[logical]) == normal(theirs[logical])
+    assert_template_ok(sam.expand(tpl))
+
+
+def test_a_polling_event_without_its_source_is_a_clear_error() -> None:
+    bad = {"Resources": {"F": {"Type": "AWS::Serverless::Function", "Properties": {"Handler": "h", "CodeUri": "s3://b/k", "Events": {"K": {"Type": "Kinesis", "Properties": {}}}}}}}
+    with pytest.raises(NotImplementedError, match="Stream"):
+        sam.expand(bad)  # ty: ignore[invalid-argument-type]

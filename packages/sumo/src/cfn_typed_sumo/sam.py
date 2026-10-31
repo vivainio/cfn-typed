@@ -47,6 +47,27 @@ def sqs_event(queue_arn: Expr[Any], *, batch_size: int = 10, max_batching_window
     return {"Type": "SQS", "Properties": props}
 
 
+def sns_event(topic: Expr[str]) -> serverless.FunctionSNSEvent:
+    """An `SNS` event: SAM subscribes the function to the topic and lets the topic invoke it."""
+    return {"Type": "SNS", "Properties": {"Topic": topic}}
+
+
+def stream_event(
+    kind: Literal["Kinesis", "DynamoDB"], stream_arn: Expr[Any], *, starting_position: Literal["LATEST", "TRIM_HORIZON"] = "LATEST",
+    batch_size: int | None = None,
+) -> Any:
+    """A `Kinesis` or `DynamoDB` stream event; `stream_arn` is the stream's ARN (`get_att("Table", "StreamArn")`)."""
+    props: dict[str, Any] = {"Stream": stream_arn, "StartingPosition": starting_position}
+    if batch_size is not None:
+        props["BatchSize"] = batch_size
+    return {"Type": kind, "Properties": props}
+
+
+def event_bridge_event(pattern: Mapping[str, Any]) -> serverless.FunctionEventBridgeRuleEvent:
+    """An `EventBridgeRule` event: a rule on the default bus matching `pattern`, with the permission to invoke."""
+    return {"Type": "EventBridgeRule", "Properties": {"Pattern": pattern}}
+
+
 def http_api_event(path: str, method: str = "ANY", *, api_id: Expr[str] | None = None) -> serverless.FunctionHttpApiEvent:
     """An `HttpApi` event: a route on the implicit HTTP API, or on `api_id` when given."""
     props: serverless.FunctionHttpApiEventProperties = {"Path": path, "Method": method}
@@ -116,4 +137,7 @@ def connect(
     )}
 
 
-__all__ = ["SAM_TRANSFORM", "connect", "expand", "function", "http_api_event", "schedule_event", "sqs_event", "table", "template"]
+__all__ = [
+    "SAM_TRANSFORM", "connect", "event_bridge_event", "expand", "function", "http_api_event", "schedule_event",
+    "sns_event", "sqs_event", "stream_event", "table", "template",
+]

@@ -64,6 +64,9 @@ An event is a small typed dict. The builders exist because of two things the che
 | `sqs_event(queue_arn, batch_size=10)` | `SQS` | the event source mapping and read access to the queue |
 | `http_api_event(path, method)` | `HttpApi` | a route on the implicit HTTP API (or `api_id`'s) |
 | `schedule_event(expression)` | `Schedule` | the rule and the permission to invoke the function |
+| `sns_event(topic)` | `SNS` | the subscription and the permission for the topic to invoke the function |
+| `stream_event("Kinesis" or "DynamoDB", stream_arn)` | `Kinesis`, `DynamoDB` | the event source mapping and read access to the stream |
+| `event_bridge_event(pattern)` | `EventBridgeRule` | a rule on the default bus and the permission to invoke |
 
 For any other event type, build it as a typed value first (`e: serverless.FunctionS3Event = {...}`) and pass that in
 `Events`.
@@ -93,13 +96,15 @@ It covers a fixed subset, the SAM release the types are pinned to, and says so w
 | SAM | Becomes |
 |---|---|
 | `Function` (S3 `CodeUri`, `Environment`, `Policies`, `Tags`, ...) | `Lambda::Function` and `IAM::Role` (`{Name}`, `{Name}Role`) |
-| `SQS` event | `Lambda::EventSourceMapping` `{Name}{Event}`, and the SQS execution policy on the role |
-| `Schedule` event | `Events::Rule` `{Name}{Event}` and `Lambda::Permission` `{Name}{Event}Permission` |
+| `SQS`, `Kinesis`, `DynamoDB` event | `Lambda::EventSourceMapping` `{Name}{Event}`, and the matching execution policy on the role |
+| `SNS` event | `SNS::Subscription` `{Name}{Event}` and `Lambda::Permission` `{Name}{Event}Permission` |
+| `Schedule`, `EventBridgeRule` event | `Events::Rule` `{Name}{Event}` and `Lambda::Permission` `{Name}{Event}Permission` |
 | `HttpApi` event | `ApiGatewayV2` `Api`, `Integration`, `Route`, `Stage` and the invoke permission, one API per function, from the [`http_api`](http-api.md) pattern |
 | `SimpleTable` | `DynamoDB::Table`, on-demand unless `ProvisionedThroughput` is given |
+| `Connector` | `IAM::ManagedPolicy` `{Name}Policy` on the source function's role (`{Name}PolicyDestination{N}` for a list), for `Read` and `Write` on an SQS queue, SNS topic, S3 bucket, DynamoDB table or `SimpleTable`, or a function |
 | `Globals.Function`, `IgnoreGlobals` | merged into each function (`Environment.Variables` and `Tags` are merged, other keys replaced) |
 
-Anything else (`Connectors`, other event types and resources, a local `CodeUri` that needs packaging, properties not
+Anything else (the `Connectors` key inside a function, other event types and resources, a local `CodeUri` that needs packaging, properties not
 listed above) raises `NotImplementedError` naming it, rather than being dropped. Resources that are not
 `AWS::Serverless::*` pass through unchanged.
 

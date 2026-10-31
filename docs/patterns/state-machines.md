@@ -155,9 +155,12 @@ def test_port_is_the_original() -> None:
 **Getting it into a template**
 
 - **Placeholders.** Strings with `${AWS::Region}`, `${AWS::AccountId}` or `${Stage}` must become `Fn::Sub`.
-  `cfn_typed.asl.substituted(definition)` wraps each such string. The alternative is `DefinitionSubstitutions`, which Step
-  Functions fills in itself. Deploy to a throwaway stack and look at the deployed definition (`describe-state-machine`)
-  before trusting either.
+  `cfn_typed.asl.substituted(definition)` wraps each such string. `Definition` is a `Json`-typed property, like an IAM
+  `PolicyDocument`, and cfn-lint accepts `Fn::Sub` nested anywhere inside it. `DefinitionSubstitutions` is the other
+  route, but it is for named placeholders (`${HelloFunction}`) whose values you supply, and cfn-lint rejects
+  `${AWS::Region}` left in a definition that is not wrapped in `Fn::Sub`, so use `Fn::Sub` for pseudo parameters.
+  This was checked against the docs and cfn-lint, not by a deploy: deploy once to a throwaway stack and compare the
+  deployed definition (`describe-state-machine`) with the original.
 - **`Definition`, not `DefinitionString`.** CloudFormation sees a different property, so the first deploy shows a change
   to it even when the machine is identical. The deployed definition should be the same; compare it with the original
   after the first deploy.

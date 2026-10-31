@@ -753,7 +753,7 @@ def _rename(start: str, states: Mapping[str, Mapping[str, Any]], fn: Callable[[s
 
 
 def substituted(definition: Any) -> Any:
-    """`definition` with every string that has a `${` wrapped in `{"Fn::Sub": string}`, for `Properties.Definition` of a state machine whose states name `${AWS::Region}`, `${Stage}` and the like. A string with no `${` stays a plain string. `${!literal}` works as in any `Fn::Sub`. Test a deploy before relying on it: the alternative is `DefinitionSubstitutions`, which Step Functions fills in itself."""
+    """`definition` with every string that has a `${` wrapped in `{"Fn::Sub": string}`, for `Properties.Definition` of a state machine whose states name `${AWS::Region}`, `${Stage}` and the like. A string with no `${` stays a plain string. `${!literal}` works as in any `Fn::Sub`. cfn-lint accepts the result. The alternative, `DefinitionSubstitutions`, fills in named placeholders such as `${HelloFunction}`; cfn-lint rejects `${AWS::Region}` outside an `Fn::Sub`, so use this for pseudo parameters."""
     if isinstance(definition, str):
         return {"Fn::Sub": definition} if "${" in definition else definition
     if isinstance(definition, list):

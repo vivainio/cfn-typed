@@ -99,7 +99,7 @@ object instead of a 100 KB string. See [`import`](cli.md#import-start-from-an-ex
 `Fn::Sub`, so the substitutions still happen; `cfn_typed.asl.substituted(definition)` does the same to any definition,
 for a machine you built in Python and put in `Properties.Definition`. The result is a different template property than the original
 (`Definition`, not `DefinitionString`), so the exact round trip that `import` otherwise keeps does not hold for it.
-Check a deploy before relying on it.
+`Definition` is a `Json` property, so CloudFormation resolves an `Fn::Sub` inside it as it would in a policy document, and cfn-lint accepts it; a deploy to a throwaway stack is still the real test.
 
 ## Fragments: reuse in a big machine
 

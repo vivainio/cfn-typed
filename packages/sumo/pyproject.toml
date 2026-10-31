@@ -1,0 +1,27 @@
+[project]
+name = "cfn-typed-sumo"
+version = "0.0.0.dev0"
+description = "cfn-typed with the generated types its reusable patterns use, plus the patterns"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.14"
+dependencies = ["cfn-typed"]  # the release workflow pins it to the same version
+
+[project.urls]
+Homepage = "https://github.com/vivainio/cfn-typed"
+Repository = "https://github.com/vivainio/cfn-typed"
+
+[tool.uv.sources]
+cfn-typed = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# The generated types are gitignored; hatch leaves out gitignored files, so name them here
+# (under [tool.hatch.build], not just the wheel target: uv builds the wheel from the sdist).
+[tool.hatch.build]
+artifacts = ["src/cfn_typed_sumo/types"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cfn_typed_sumo"]

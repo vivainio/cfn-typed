@@ -45,6 +45,7 @@ can drop them without touching the facts.
 | [Policy statements](policy.md) | builders for principals, conditions, allow and deny | mechanics, no opinion: stable |
 | [Grants](grants.md) | the CDK's permission sets | **opinion: unstable, marked as such** |
 | [Patterns](patterns/index.md) | a secure bucket, a load balancer, ... | **opinion: examples to copy, not an API** |
+| [cfn-typed-sumo](sumo.md) | the patterns and generated types as a package | **opinion: a fat library with a volatile API** |
 
 This is deliberately different from systems that bundle the two. In the AWS CDK a construct such as `Bucket` carries
 defaults and permission decisions together, and what you get can depend on your CDK version and feature flags;

@@ -7,7 +7,7 @@ from integrations import (
     alias_to_distribution, alias_to_load_balancer, api_to_dynamodb, api_to_lambda, bucket_to_lambda, event_to_lambda,
     event_to_queue, fan_out, fargate_task, firehose_to_s3, lambda_behind_alb, static_site, stream_trigger, with_stream,
 )
-from patterns import lambda_role, queue_with_dlq
+from cfn_typed_sumo.patterns import lambda_role, queue_with_dlq
 from storage import dynamodb_table
 
 

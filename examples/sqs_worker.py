@@ -6,7 +6,7 @@ import sys
 import cfn_typed as cfn
 from cfn_typed import grants
 from cfn_types import lambda_
-from patterns import lambda_role, queue_with_dlq, sqs_event_source
+from cfn_typed_sumo.patterns import lambda_role, queue_with_dlq, sqs_event_source
 
 service = "order-processor"
 stage = sys.argv[1] if len(sys.argv) > 1 else "dev"

@@ -3,7 +3,7 @@
 A single resource that connects a queue to a function.
 
 ```python
---8<-- "examples/patterns.py:sqs_event_source"
+--8<-- "packages/sumo/src/cfn_typed_sumo/patterns.py:sqs_event_source"
 ```
 
 ```python

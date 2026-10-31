@@ -4,7 +4,7 @@ A company defines the tags every resource must carry. Each service then supplies
 resources, some per resource. The pattern checks that the pieces add up to the full set.
 
 ```python
---8<-- "examples/patterns.py:company_tags"
+--8<-- "packages/sumo/src/cfn_typed_sumo/patterns.py:company_tags"
 ```
 
 ```python

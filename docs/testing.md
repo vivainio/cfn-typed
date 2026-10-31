@@ -67,7 +67,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - run: uv sync
       # only if you generate the types in CI rather than committing them:
-      - run: uv run cfn-typegen --no-docs --out cfn_types $(grep -v '^#' types.txt)
+      - run: uv run cfn-typegen        # reads cfn-typegen.toml
       - run: uv run ty check
       - run: uv run pytest        # includes the golden-template tests
 ```

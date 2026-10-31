@@ -11,7 +11,7 @@ in the wheel. Do not commit them.**
 
 ```text
 corp-patterns/
-  types.txt                  # the resource types the patterns use
+  cfn-typegen.toml           # out = "src/corp/_types", types = [...] the patterns use
   pyproject.toml
   src/corp/
     __init__.py
@@ -33,6 +33,11 @@ def queue_with_dlq(name: str, *, tags: list[Expr[Tag]] | None = None) -> Resourc
     ...                                          # builds with sqs.queue(...) inside
 ```
 
+!!! note "The sumo exception"
+    `cfn-typed-sumo`, built from this repository, ships its generated types as a public module
+    (`cfn_typed_sumo.types`) so that users can build their own resources with the same types the
+    patterns use. The private-types advice below is for small pattern packages.
+
 ## Why this shape
 
 - **Callers install and use it.** Nothing to generate before calling `queue_with_dlq`.
@@ -42,7 +47,7 @@ def queue_with_dlq(name: str, *, tags: list[Expr[Tag]] | None = None) -> Resourc
   `sqs.Queue` and a caller's own generated `sqs.Queue` are different classes that the type
   checker treats as interchangeable `AnyResource` values. The caller generates only what
   *their* templates use.
-- **Small.** The wheel carries only the resources your patterns need, and `--no-docs`
+- **Small.** The wheel carries only the resources your patterns need, and `docs = false`
   trims the descriptions.
 - **The repository stays free of generated code.** It is produced by the build, like any
   other artefact.
@@ -72,7 +77,7 @@ artifacts = ["src/corp/_types"]
 **Generate before building.** In the release workflow, the step before `uv build`:
 
 ```yaml
-- run: uv run cfn-typegen --no-docs --out src/corp/_types $(grep -v '^#' types.txt)
+- run: uv run cfn-typegen        # reads cfn-typegen.toml
 - run: uv build
 ```
 

@@ -26,14 +26,16 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Generate the types the examples and tests use
-        run: uv run cfn-typegen --out examples/cfn_types $(grep -v '^#' examples/types.txt)
+      - name: Generate the types the examples, tests and cfn-typed-sumo use
+        run: |
+          uv run cfn-typegen --config examples/cfn-typegen.toml
+          uv run cfn-typegen --config packages/sumo/cfn-typegen.toml
 
       - name: Run type checks
         run: uv run ty check
 
       - name: Run tests
-        run: uv run pytest tests/ -v
+        run: uv run pytest tests/ packages/sumo/tests/ -v
 
       - name: Lint the rendered examples with cfn-lint
         # the version is pinned in the dev group of pyproject.toml; errors fail the build, warnings are printed only

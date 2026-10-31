@@ -139,7 +139,7 @@ def web_entrypoint(
         raise ValueError("redirect_http needs a certificate_arn and no forwarded port 80")
     open_ports = [*ports, 80] if redirect_http else list(ports)
     group, lb = f"{name}SecurityGroup", f"{name}LoadBalancer"
-    ingress: list[Expr[ec2.SecurityGroupIngress2]] = [
+    ingress: list[Expr[ec2.SecurityGroupIngressProperty]] = [
         {"IpProtocol": "tcp", "FromPort": p, "ToPort": p, "CidrIp": cidr}
         for p in open_ports
         for cidr in allowed_cidrs

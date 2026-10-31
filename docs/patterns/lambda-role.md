@@ -4,7 +4,7 @@ Every Lambda needs a role that it can assume and that can write logs. The
 interesting part is the extra permissions, so that is the argument.
 
 ```python
---8<-- "examples/patterns.py:lambda_role"
+--8<-- "packages/sumo/src/cfn_typed_sumo/patterns.py:lambda_role"
 ```
 
 Use it by passing the statements the function needs. The [grants](../grants.md) give you
@@ -28,7 +28,7 @@ cfn.allow([Sqs.ReceiveMessage, Sqs.DeleteMessage], [cfn.get_att("OrderQueue", "A
 ## Things worth noticing
 
 - **It returns `iam.Role`**, not `dict`. The generated type knows `Policies` takes a
-  list of `iam.RolePolicy`, so a misspelled `PolicyDocumnet` is an error here, in the
+  list of `iam.RolePolicyProperty`, so a misspelled `PolicyDocumnet` is an error here, in the
   pattern, rather than in every caller.
 - **`allow` and `Statement` come from `cfn_typed`.** `Effect` is limited to
   `"Allow"` or `"Deny"`, and `Resource` accepts a literal or an intrinsic.

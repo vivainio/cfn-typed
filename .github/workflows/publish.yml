@@ -21,14 +21,20 @@ jobs:
         run: |
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
-          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml packages/sumo/pyproject.toml
+          sed -i "s/^dependencies = \[\"cfn-typed\"\]/dependencies = [\"cfn-typed==$VERSION\"]/" packages/sumo/pyproject.toml
           echo "Set version to $VERSION"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
-      - name: Build package
-        run: uv build
+      - name: Generate the types cfn-typed-sumo ships
+        run: uv run cfn-typegen --config packages/sumo/cfn-typegen.toml
+
+      - name: Build packages
+        run: |
+          uv build
+          uv build --package cfn-typed-sumo
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

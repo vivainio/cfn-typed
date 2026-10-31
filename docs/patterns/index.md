@@ -35,20 +35,32 @@ a dict or any handle, via the `HasResources` protocol.
 
 ## Where the code lives
 
-The patterns in this book are not part of the `cfn-typed` package. They are in
-[`examples/patterns.py`](https://github.com/vivainio/cfn-typed/blob/main/examples/patterns.py),
-they are type-checked and tested like any other code, and every snippet on these
-pages is pulled straight from that file. Copy what you need into your project and
-change it; they are starting points, not an API.
+The patterns in this book that live in a package ship as **`cfn-typed-sumo`**, a second
+package built from this repository that depends on `cfn-typed`. It is a fat pattern library with a
+volatile API, unlike the core ([details](../sumo.md)):
 
-All of them start from the same imports:
-
-```python
---8<-- "examples/patterns.py:imports"
+```sh
+uv add cfn-typed-sumo
 ```
 
-`cfn_types` is the output of `cfn-typegen` for the services used here. This repository
-does not contain it; it is generated when the tests run.
+The code is in
+[`packages/sumo/src/cfn_typed_sumo/patterns.py`](https://github.com/vivainio/cfn-typed/blob/main/packages/sumo/src/cfn_typed_sumo/patterns.py),
+type-checked and tested like any other code, and every snippet on these pages is pulled
+straight from that file. Import them (`from cfn_typed_sumo import queue_with_dlq`) or copy
+what you need and change it.
+
+The package also ships the generated types its patterns use as a public module,
+`cfn_typed_sumo.types`. They are generated from `packages/sumo/cfn-typegen.toml`, which lists
+the resource types the patterns need plus the core services (IAM, Lambda, SQS, SNS, S3, KMS,
+DynamoDB, Logs, Events, SSM, CloudWatch); the repository does not contain them, and CI and the
+release build generate them. The snippets start from these imports:
+
+```python
+--8<-- "packages/sumo/src/cfn_typed_sumo/patterns.py:imports"
+```
+
+The other patterns on these pages (load balancer, storage and so on) are still in
+`examples/` and are not yet part of the package.
 
 | Pattern | Creates |
 |---|---|

@@ -7,3 +7,4 @@ examples/cfn_types/
 docs/reference/
 uv.lock
 dist/
+packages/sumo/src/cfn_typed_sumo/types/

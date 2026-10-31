@@ -250,3 +250,22 @@ def test_literal_enums_are_off_by_default_and_a_flag_turns_them_on() -> None:
     ns: dict[str, Any] = {}
     exec(compile(literal, "<dial>", "exec"), ns)
     assert ns["dial"](Mode="fast")["Properties"] == {"Mode": "fast"}
+
+
+def test_property_types_avoid_resource_names_of_the_service(tmp_path: Any) -> None:
+    """`Role.Policy` and the resource `RolePolicy` both want the name RolePolicy; the resource keeps it,
+    whether or not it is among the generated types, so the property type's name does not depend on the selection."""
+    role = {
+        "typeName": "AWS::Foo::Role",
+        "definitions": {"Policy": {"type": "object", "properties": {"N": {"type": "integer"}}}},
+        "properties": {"Policies": {"type": "array", "items": {"$ref": "#/definitions/Policy"}}},
+    }
+    role_policy = {"typeName": "AWS::Foo::RolePolicy", "properties": {"X": {"type": "string"}}}
+    alone = gen.render_module("AWS::Foo", [role])
+    assert "class RolePolicy(" in alone  # no sibling known: the property type keeps the name
+    gen.write(tmp_path / "a", [role], universe=[role, role_policy])
+    gen.write(tmp_path / "b", [role, role_policy], universe=[role, role_policy])
+    for out in ("a", "b"):
+        src = (tmp_path / out / "foo.py").read_text()
+        assert "class RolePolicyProperty(" in src  # the property type
+    assert "class RolePolicy(ResourceAttrs)" in (tmp_path / "b" / "foo.py").read_text()

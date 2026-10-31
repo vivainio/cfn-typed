@@ -32,6 +32,7 @@ import tomllib
 import urllib.request
 import zipfile
 from collections import Counter, defaultdict
+from collections.abc import Collection
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -77,12 +78,17 @@ def union(types: list[str]) -> str:
 class Module:
     """Names and class blocks for one service module."""
 
-    def __init__(self) -> None:
+    def __init__(self, siblings: Collection[str] = ()) -> None:
         self.names: set[str] = {n for names in IMPORTS.values() for n in names}
+        self.siblings = set(siblings)  # resource names of the service, generated or not
         self.blocks: list[str] = []
 
-    def claim(self, base: str) -> str:
+    def claim(self, base: str, *, resource: bool = False) -> str:
+        """A free name. A property type whose name is a resource name of the service gets `Property` added, so
+        `Role.Policy` is `RolePolicyProperty` whether or not `AWS::IAM::RolePolicy` is among the types being generated."""
         base = base + "_" if reserved(base) else base
+        if not resource and base in self.siblings:
+            base += "Property"
         name, i = base, 2
         while name in self.names:
             name, i = f"{base}{i}", i + 1
@@ -426,15 +432,19 @@ def imports(body: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: str | None = None, overrides: Overrides | None = None, constraints: bool = True, literal_enums: bool = False) -> str:
-    mod = Module()
+def resource_name(schema: Schema) -> str:
+    return pascal("".join(schema["typeName"].split("::")[2:]))
+
+
+def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: str | None = None, overrides: Overrides | None = None, constraints: bool = True, literal_enums: bool = False, siblings: Collection[str] = ()) -> str:
+    mod = Module(siblings)
     table: dict[str, Schema] = {}
     attributes: dict[str, list[str]] = {}
     combinations: dict[str, list[Any]] = {}
     plans = []
     for s in sorted(schemas, key=lambda s: s["typeName"]):
-        res = pascal("".join(s["typeName"].split("::")[2:]))
-        plans.append((s, mod.claim(res), mod.claim(res + "Props"), mod.claim(snake(res))))
+        res = resource_name(s)
+        plans.append((s, mod.claim(res, resource=True), mod.claim(res + "Props", resource=True), mod.claim(snake(res), resource=True)))
     for schema, res, props_cls, factory in plans:
         type_name = schema["typeName"]
         gen = ResourceGen(mod, schema, res, docs, literal_enums)
@@ -518,7 +528,12 @@ def select(schemas: list[Schema], patterns: list[str]) -> list[Schema]:
     return [s for s in schemas if any(fnmatch.fnmatchcase(s["typeName"].lower(), p) for p in wanted)]
 
 
-def write(out: Path, schemas: list[Schema], docs: bool = True, stamp: str | None = None, overrides: Overrides | None = None, constraints: bool = True, literal_enums: bool = False) -> None:
+def write(out: Path, schemas: list[Schema], docs: bool = True, stamp: str | None = None, overrides: Overrides | None = None, constraints: bool = True, literal_enums: bool = False, universe: list[Schema] | None = None) -> None:
+    """`universe` is every schema of the registry: it keeps property type names the same whichever types are selected."""
+    siblings: dict[str, set[str]] = defaultdict(set)
+    for schema in universe or schemas:
+        if len(parts := schema["typeName"].split("::")) >= 3:
+            siblings[parts[1].lower()].add(resource_name(schema))
     groups: dict[str, list[Schema]] = defaultdict(list)
     for schema in schemas:
         parts = schema["typeName"].split("::")
@@ -534,7 +549,7 @@ def write(out: Path, schemas: list[Schema], docs: bool = True, stamp: str | None
     (out / "__init__.py").write_text(f'{MARKER}.\n"""Generated CloudFormation resource modules, one per service."""\n')
     for svc, items in sorted(groups.items()):
         title = "::".join(items[0]["typeName"].split("::")[:2])
-        (out / f"{svc}.py").write_text(render_module(title, items, docs, stamp, overrides, constraints, literal_enums))
+        (out / f"{svc}.py").write_text(render_module(title, items, docs, stamp, overrides, constraints, literal_enums, siblings[items[0]["typeName"].split("::")[1].lower()]))
     print(f"wrote {sum(map(len, groups.values()))} resources in {len(groups)} modules to {out}")
 
 
@@ -636,7 +651,7 @@ def main(argv: list[str] | None = None) -> None:
     zip_path = ensure_schemas(args.schemas if args.schemas != CACHE or "schemas" not in config else Path(config["schemas"]), args.refresh)
     schemas = load_schemas(zip_path)
     write(out, schemas if everything else select(schemas, patterns), docs=docs, stamp=schema_stamp(zip_path), overrides=Overrides.of(config.get("optional", []), config.get("required", []), config.get("unconstrained", [])),
-          constraints=config.get("constraints", True) and not args.no_constraints, literal_enums=args.literal_enums or config.get("literal_enums", False))
+          constraints=config.get("constraints", True) and not args.no_constraints, literal_enums=args.literal_enums or config.get("literal_enums", False), universe=schemas)
 
 
 if __name__ == "__main__":

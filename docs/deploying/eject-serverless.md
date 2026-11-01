@@ -127,6 +127,15 @@ The framework does four things a template does not show, and ejecting means doin
 
 Each of these is a change to the template, and each shows up in a diff.
 
+!!! tip "`serverless_wsgi.py` is not part of the framework"
+    Many Python apps (Flask, Django) have `serverless_wsgi.handler` as their Lambda handler. That file comes from
+    the `serverless-wsgi` plugin, which copies it into the package at deploy time, but it is a trivial standalone
+    wrapper that turns API Gateway events into WSGI calls. It is not tied to any part of Serverless. Put
+    `serverless_wsgi.py` in your package yourself (vendor the file, or `pip install serverless-wsgi` and bundle it with your
+    dependencies), keep `Handler` as it is, and the function runs unchanged after the ejection. Check that the plugin's
+    `wsgi.app` setting, which `serverless.yml` writes into `.serverless-wsgi` in the package, is replaced by that
+    file in your package too, since the wrapper reads the app's location from it.
+
 ## Then use the patterns
 
 Most patterns pick their own logical IDs: `function` makes `Worker`, `WorkerRole` and `WorkerLogs`, not

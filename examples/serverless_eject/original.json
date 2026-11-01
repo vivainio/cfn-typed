@@ -1,0 +1,134 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "The AWS CloudFormation template for this Serverless application",
+  "Resources": {
+    "ServerlessDeploymentBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {"ServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}
+          ]
+        }
+      }
+    },
+    "ServerlessDeploymentBucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {"Ref": "ServerlessDeploymentBucket"},
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "s3:*",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Resource": [
+                {"Fn::Join": ["", ["arn:", {"Ref": "AWS::Partition"}, ":s3:::", {"Ref": "ServerlessDeploymentBucket"}, "/*"]]},
+                {"Fn::Join": ["", ["arn:", {"Ref": "AWS::Partition"}, ":s3:::", {"Ref": "ServerlessDeploymentBucket"}]]}
+              ],
+              "Condition": {"Bool": {"aws:SecureTransport": false}}
+            }
+          ]
+        }
+      }
+    },
+    "WorkerLogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/aws/lambda/ledger-dev-worker",
+        "RetentionInDays": 30
+      }
+    },
+    "IamRoleLambdaExecution": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {"Effect": "Allow", "Principal": {"Service": ["lambda.amazonaws.com"]}, "Action": ["sts:AssumeRole"]}
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": {"Fn::Join": ["-", ["ledger", "dev", "lambda"]]},
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": ["logs:CreateLogStream", "logs:CreateLogGroup", "logs:TagResource"],
+                  "Resource": [
+                    {"Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/ledger-dev*:*"}
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": ["logs:PutLogEvents"],
+                  "Resource": [
+                    {"Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/ledger-dev*:*:*"}
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "Path": "/",
+        "RoleName": {"Fn::Join": ["-", ["ledger", "dev", {"Ref": "AWS::Region"}, "lambdaRole"]]}
+      }
+    },
+    "WorkerLambdaFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Code": {
+          "S3Bucket": {"Ref": "ServerlessDeploymentBucket"},
+          "S3Key": "serverless/ledger/dev/1730000000000-2026-10-31T10:00:00.000Z/ledger.zip"
+        },
+        "Handler": "handler.cleanup",
+        "Runtime": "python3.12",
+        "FunctionName": "ledger-dev-worker",
+        "MemorySize": 512,
+        "Timeout": 600,
+        "Role": {"Fn::GetAtt": ["IamRoleLambdaExecution", "Arn"]}
+      },
+      "DependsOn": ["WorkerLogGroup"]
+    },
+    "WorkerLambdaVersionAbc123def456": {
+      "Type": "AWS::Lambda::Version",
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "FunctionName": {"Ref": "WorkerLambdaFunction"},
+        "CodeSha256": "abc123def456abc123def456abc123def456abc123def456abc123def456abcd"
+      }
+    },
+    "WorkerEventsRuleSchedule1": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "ScheduleExpression": "cron(0 3 * * ? *)",
+        "State": "ENABLED",
+        "Targets": [
+          {"Arn": {"Fn::GetAtt": ["WorkerLambdaFunction", "Arn"]}, "Id": "workerSchedule"}
+        ]
+      }
+    },
+    "WorkerLambdaPermissionEventsRuleSchedule1": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {"Fn::GetAtt": ["WorkerLambdaFunction", "Arn"]},
+        "Action": "lambda:InvokeFunction",
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {"Fn::GetAtt": ["WorkerEventsRuleSchedule1", "Arn"]}
+      }
+    }
+  },
+  "Outputs": {
+    "ServerlessDeploymentBucketName": {
+      "Value": {"Ref": "ServerlessDeploymentBucket"},
+      "Export": {"Name": "sls-ledger-dev-ServerlessDeploymentBucketName"}
+    },
+    "WorkerLambdaFunctionQualifiedArn": {
+      "Description": "Current Lambda function version",
+      "Value": {"Ref": "WorkerLambdaVersionAbc123def456"},
+      "Export": {"Name": "sls-ledger-dev-WorkerLambdaFunctionQualifiedArn"}
+    }
+  }
+}

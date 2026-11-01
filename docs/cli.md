@@ -141,7 +141,7 @@ is one and plain dicts where there is not (the module lists what it kept as a di
 first with `cfn-typegen --template template.json`. By default the module renders back to exactly the original.
 `--asl` writes each state machine's `DefinitionString` as a `Definition` object that
 [`cfn_typed.asl`](state-machines.md) types and checks; the template then differs from the original in that one
-property.
+property. For a service built with the Serverless Framework, see [Ejecting from the Serverless Framework](patterns/eject-serverless.md).
 
 ## `ls`: list the resources
 

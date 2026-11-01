@@ -38,6 +38,7 @@ nav = [
     { "Data flows" = "patterns/data-flows.md" },
     { "Fargate tasks" = "patterns/containers.md" },
     { "Serverless Framework in a few lines" = "patterns/serverless.md" },
+    { "Ejecting from the Serverless Framework" = "patterns/eject-serverless.md" },
     { "AWS SAM" = "patterns/sam.md" },
     { "Working with state machines" = "patterns/state-machines.md" },
     { "Mandatory tags" = "patterns/mandatory-tags.md" },

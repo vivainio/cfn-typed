@@ -46,6 +46,43 @@ along, and the generated types can be renamed or regenerated when the generator 
 version (`cfn-typed-sumo==X.Y.Z`; the two packages are released in lockstep, so it pins `cfn-typed` for you) and
 read the release notes before you move.
 
-If you would rather not follow a volatile API, take what you need from sumo's source and keep it in your own
-package, as [Distributing patterns](distributing.md) describes. The patterns are plain functions over plain
-dicts, so copying one costs nothing.
+## Recommended: start with sumo, then eject what you use
+
+A volatile API is a good trade while you are exploring and a poor one once a template is in production. So the
+suggested path is in two steps:
+
+1. **Start with sumo.** Install it, import the patterns and the pre-generated types, and get a stack working.
+   Nothing to configure, nothing to copy. Use it to find out which patterns you actually need and which
+   defaults you end up overriding.
+2. **Eject the parts you used.** Once you know, copy those pieces into your own package and drop the
+   dependency on `cfn-typed-sumo` (keep `cfn-typed`, whose API is the reliable one). From then on your
+   patterns change when *you* decide, not when a release does.
+
+What ejecting takes:
+
+- **Patterns.** Copy the functions you imported from `packages/sumo/src/cfn_typed_sumo/` (for example
+  `queue_with_dlq` from `patterns.py`) into a module of your own, along with any small helper they call, and
+  change the imports. They are plain functions over plain dicts and depend only on `cfn-typed` and the types,
+  so there is nothing else to untangle. The tests next to them are worth copying too.
+- **Types.** Do not copy generated files. List the resource types you actually use in your own
+  `cfn-typegen.toml` (the `AWS::SQS::Queue`-style names, or a glob per service) and let `cfn-typegen` produce them,
+  as [Distributing patterns](distributing.md) describes. Then replace `from cfn_typed_sumo.types import sqs` with
+  an import from your generated module. Because the sumo list is just such a config, copying the lines you need
+  from `packages/sumo/cfn-typegen.toml` is a fine start, and you ship only the services you use.
+- **Where it goes.** [A typical project](project-layout.md) shows a layout for this: a `cfn/` directory with
+  `patterns/`, `stacks/` and the generated types.
+- **Commit or generate?** Keep `cfn-typegen.toml` in the repository either way. With only a handful of types,
+  committing the generated files is fine: the build needs no extra step, and the code is there to read. As the count
+  grows they become a lot of generated code in every review and diff, and it is tidier to gitignore the
+  directory and run `cfn-typegen` at build time, in CI and in development (a one-line `conftest.py` does it for
+  tests). [Distributing patterns](distributing.md#build-setup) has the setup.
+- **Check the result.** The imports are the only thing that changes, so the type checker and your
+  [tests](testing.md) will tell you if something was missed. Render a template before and after: the output
+  should be identical.
+
+You do not have to eject everything at once. Ejecting a pattern as soon as you want to change it is a common
+trigger, and a pattern you have not touched can keep coming from sumo until you do. Once you have, remove
+`cfn-typed-sumo` from your dependencies so no import quietly slips back.
+
+If you would rather not follow a volatile API from the start, skip step 1 and take what you need from sumo's
+source straight away. The patterns are plain functions over plain dicts, so copying one costs nothing.

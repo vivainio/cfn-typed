@@ -39,13 +39,15 @@ The whole program is one file: build the template as data, print it as JSON.
 --8<-- "examples/minimal.py:main"
 ```
 
-`build` is a pure function of its arguments, so tests can call it directly. The [rendered
-YAML](rendered/minimal.md) is in the book. `main`
-only reads the stage from the command line and prints. Render and deploy:
+`build` is a pure function of its config, so tests can call it directly. The inputs that change the
+template's shape go in the config object (`JobsConfig`); the ones that only change a value, such as the
+stage, are CloudFormation parameters, so one rendered template serves every stage. The [rendered
+YAML](rendered/minimal.md) is in the book. Render and deploy:
 
 ```sh
-python minimal.py prod > template.json
-aws cloudformation deploy --template-file template.json --stack-name jobs-prod
+python minimal.py > template.json
+aws cloudformation deploy --template-file template.json --stack-name jobs-prod \
+    --parameter-overrides Stage=prod
 ```
 
 ## JSON or YAML
@@ -54,7 +56,7 @@ aws cloudformation deploy --template-file template.json --stack-name jobs-prod
 writes the same template as readable CloudFormation YAML:
 
 ```python
-print(cfn.to_yaml(build("prod")))
+print(cfn.to_yaml(build()))
 ```
 
 ```yaml
@@ -66,7 +68,7 @@ Resources:
       VisibilityTimeout: 60
       Tags:
         - Key: Stage
-          Value: prod
+          Value: !Ref Stage
 Outputs:
   JobsUrl:
     Value: !Ref Jobs
@@ -95,8 +97,8 @@ change appears as a diff in the pull request:
 ```python
 from cfn_typed.testing import assert_matches_file
 
-def test_jobs_prod() -> None:
-    assert_matches_file(build("prod"), "rendered/jobs-prod.yaml")
+def test_jobs() -> None:
+    assert_matches_file(build(), "rendered/jobs.yaml")
 ```
 
 Run the tests with `CFN_TYPED_UPDATE=1` to create or accept the files. The

@@ -11,14 +11,16 @@ dead-letter queue and a concurrency cap. This is
 The role's permissions come from the [grants](../grants.md) (the AWS CDK's permission sets), and the
 other parts are the patterns from the previous pages.
 
-[See the rendered YAML](../rendered/sqs-worker.md) for the prod stage.
+[See the rendered YAML](../rendered/sqs-worker.md).
 
-The stage comes from `sys.argv`, so one source file renders every environment:
+The stage is a template parameter (`Stage`), so one rendered template serves every environment, and the
+stage is chosen at deploy time. What would change the template's shape (the table name, the memory size, the
+concurrency) is in `WorkerConfig`:
 
 ```sh
-python examples/sqs_worker.py prod > prod.json
-aws cloudformation deploy --template-file prod.json --stack-name order-processor-prod \
-    --capabilities CAPABILITY_IAM
+python examples/sqs_worker.py > template.json
+aws cloudformation deploy --template-file template.json --stack-name order-processor-prod \
+    --parameter-overrides Stage=prod --capabilities CAPABILITY_IAM
 ```
 
 ## What the checker covers here

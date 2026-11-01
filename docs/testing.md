@@ -5,8 +5,8 @@ YAML, and have CI check that your code still renders exactly that.**
 
 ```text
 rendered/
-  orders-prod.yaml      # committed
-  orders-dev.yaml
+  orders.yaml           # committed
+  billing.yaml
 tests/
   test_rendered.py      # renders each stack and compares
 ```
@@ -19,8 +19,8 @@ from cfn_typed.testing import assert_matches_file
 from orders import build
 
 
-def test_orders_prod() -> None:
-    assert_matches_file(build("prod"), Path("rendered/orders-prod.yaml"))
+def test_orders() -> None:
+    assert_matches_file(build(), Path("rendered/orders.yaml"))
 ```
 
 ## What you get
@@ -82,8 +82,8 @@ Two habits that make it dependable:
   formatting would show up as a diff in every golden file. Commit your lock file (`uv.lock`) so CI
   and your laptop render with the same versions, and upgrade `cfn-typed` and `pyyaml` on purpose,
   in their own pull request.
-- **One file per stack and stage.** `orders-dev.yaml` and `orders-prod.yaml` side by side make
-  the difference between environments something you can read.
+- **One file per stack, not per stage.** Stages differ by CloudFormation [parameters](patterns/parameters.md), so
+  `orders.yaml` is the template every stage deploys, and the file you review is the file that is deployed.
 
 If you also run `cfn-lint`, point it at the committed files in the same job.
 
@@ -113,8 +113,8 @@ keeps keys in insertion order and never emits YAML anchors. What remains is up t
 
 - Do not put timestamps, random values or the current user in a template.
 - Do not iterate a `set` or an unsorted directory listing to build resources; sort first.
-- Take inputs such as the stage as **arguments**, as `build("prod")` does, rather than reading
-  the environment inside the stack.
+- Take inputs as **arguments**, or as CloudFormation parameters (the stage is usually one), rather than
+  reading the environment inside the stack.
 
 These are the same rules that keep a generator easy to reason about; the golden test just
 enforces them.
@@ -129,7 +129,7 @@ covers fragments that were [combined](patterns/composing.md) from patterns:
 from cfn_typed.testing import assert_references_resolve
 
 def test_orders_references() -> None:
-    assert_references_resolve(build("prod"))
+    assert_references_resolve(build())
 ```
 
 ```text
@@ -157,7 +157,7 @@ import acme_cfn  # the generated package
 from cfn_typed.testing import assert_constraints_hold
 
 def test_orders_stack() -> None:
-    assert_constraints_hold(build("prod"), acme_cfn)
+    assert_constraints_hold(build(), acme_cfn)
 ```
 
 ```text
@@ -191,7 +191,7 @@ mode) have none. It is also sometimes stricter than CloudFormation; see `unconst
 from cfn_typed.testing import assert_attributes_exist, assert_combinations_valid, assert_iam_valid, assert_nothing_unused, assert_runtimes_supported, assert_state_machines_valid, assert_values_valid, assert_within_limits
 
 def test_orders_checks() -> None:
-    template = build("prod")
+    template = build()
     assert_attributes_exist(template, acme_cfn)   # GetAtt names an attribute the type has
     assert_combinations_valid(template, acme_cfn) # exactly one of X or Y, A needs B
     assert_values_valid(template)                 # FindInMap keys, Select indexes, parameter defaults

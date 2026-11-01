@@ -86,7 +86,7 @@ from cfn_typed.testing import assert_state_machine_valid, assert_state_machines_
 
 def test_machine() -> None:
     assert_state_machine_valid(build_machine())            # one definition
-    assert_state_machines_valid(build("prod"))             # every machine in a template
+    assert_state_machines_valid(build())             # every machine in a template
 ```
 
 Both fail with every problem listed, one per line.

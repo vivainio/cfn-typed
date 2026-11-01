@@ -12,7 +12,8 @@ Lots of pre-generated types mean you can try things out quickly: install it and 
 
 This is the **fat pattern library**: a lot of batteries, and a **volatile API**. Patterns and names change
 between releases, so pin the version. The core, `cfn-typed`, is the package whose API is meant to stay reliable.
-See [the book](https://vivainio.github.io/cfn-typed/sumo/).
+Recommended: start with sumo to see what you need, then eject the patterns and types you actually used into
+your own package, so you no longer follow its changes. See [the book](https://vivainio.github.io/cfn-typed/sumo/).
 
 ```python
 from cfn_typed_sumo.types import sqs

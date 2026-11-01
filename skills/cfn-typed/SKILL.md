@@ -99,7 +99,7 @@ cfn-typed skill                                   # print this skill, and where 
 ```
 
 To give your own program the same subcommands (`emit`, `check`, `diff`, `ls`) for the stacks it builds, call
-`cfn_typed.cli.main({"orders-prod": build_prod}, schemas=cfn_types)` from its `main()`.
+`cfn_typed.cli.main({"orders": build}, schemas=cfn_types)` from its `main()`.
 
 **Test by rendering.** Commit the rendered YAML and have CI assert the code still renders exactly that:
 `cfn_typed.testing.assert_matches_file(template, "rendered/stack.yaml")`; rerun with `CFN_TYPED_UPDATE=1` to accept an

@@ -8,9 +8,9 @@ The whole program, from [Getting started](../getting-started.md#a-minimal-progra
 
 ## Rendered YAML
 
-`cfn.to_yaml(build("prod"))`, committed as
-[`minimal-prod.yaml`](https://github.com/vivainio/cfn-typed/blob/main/examples/rendered/minimal-prod.yaml):
+`cfn.to_yaml(build())`, committed as
+[`minimal.yaml`](https://github.com/vivainio/cfn-typed/blob/main/examples/rendered/minimal.yaml):
 
 ```yaml
---8<-- "examples/rendered/minimal-prod.yaml"
+--8<-- "examples/rendered/minimal.yaml"
 ```

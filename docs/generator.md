@@ -68,7 +68,7 @@ generated code until you change the tag; `--refresh` downloads the file again. T
 Differences from the registry types:
 
 - Event sources are typed by their `Type`, a `Literal` (`"SQS"`, `"HttpApi"`, ...). Build the event first, or use
-  [`cfn_typed_sumo.sam`](../patterns/sam.md): a type checker cannot pick one of about 19 event types for a dict
+  [`cfn_typed_sumo.sam`](deploying/sam.md): a type checker cannot pick one of about 19 event types for a dict
   written inline in the `Events` argument.
 - SAM leaves many properties as "any CloudFormation value" (`BatchSize`, `Enabled`); those are typed `Any`.
 - SAM's schema has few value constraints (a handful of fixed sets such as event destination types), so

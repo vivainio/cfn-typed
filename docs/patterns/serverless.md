@@ -59,7 +59,7 @@ function("Worker", ..., statements=grants.Sqs.Queue.consume_messages.on(orders.q
 
 ## Moving an existing service
 
-To move a running service without replacing anything, see [Ejecting from the Serverless Framework](eject-serverless.md): it imports the
+To move a running service without replacing anything, see [Ejecting from the Serverless Framework](../deploying/eject-serverless.md): it imports the
 template `sls package` writes and keeps its logical IDs. What follows is the manual way.
 
 Capture what the framework generates and compare it with what the code renders:

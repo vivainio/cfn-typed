@@ -5,7 +5,7 @@
     patterns you used from `cfn-typed-sumo` into your own package is a different thing, described in
     [cfn-typed-sumo](../sumo.md#recommended-start-with-sumo-then-eject-what-you-use).
 
-The [Serverless Framework in a few lines](serverless.md) page shows what a `functions:` entry becomes as patterns. This page
+The [Serverless Framework in a few lines](../patterns/serverless.md) page shows what a `functions:` entry becomes as patterns. This page
 is for a service that already runs: you want to stop using the framework for it, and you do not want CloudFormation to
 replace anything when you do.
 
@@ -60,10 +60,10 @@ what to keep and what to move to a pattern.
 |---|---|---|
 | `{Name}LogGroup`, `{Name}LambdaFunction`, `{Name}LambdaVersion{hash}` | one `functions:` entry, three resources | `function` (log group and role included) |
 | `{Name}EventsRuleSchedule1` and `{Name}LambdaPermissionEventsRuleSchedule1` | a `schedule` event, the rule and its permission | `schedule` |
-| `{Name}EventSourceMappingSQS{Queue}` | an `sqs` event | [SQS-triggered Lambda](sqs-trigger.md) |
+| `{Name}EventSourceMappingSQS{Queue}` | an `sqs` event | [SQS-triggered Lambda](../patterns/sqs-trigger.md) |
 | `ApiGatewayRestApi`, `ApiGatewayResource…`, `ApiGatewayMethod…`, an `…Options` method per path | `http` events on REST API: a resource tree, and a mock `OPTIONS` method for CORS | keep as typed resources until you need to change them |
 | `ApiGatewayApiKey1`, `ApiGatewayUsagePlan`, `ApiGatewayUsagePlanKey1` | `private: true` on a route | keep |
-| `HttpApi`, `HttpApiStage`, `HttpApiRoute…`, `HttpApiIntegration…` | `httpApi` events | [HTTP API with a JWT authorizer](http-api.md) |
+| `HttpApi`, `HttpApiStage`, `HttpApiRoute…`, `HttpApiIntegration…` | `httpApi` events | [HTTP API with a JWT authorizer](../patterns/http-api.md) |
 | `ServerlessDeploymentBucket` and its policy | the packaging bucket | see the next section |
 | `IamRoleLambdaExecution` | one role for every function in the service | see the next section |
 | a type starting `Custom::` | a plugin's custom resource | copy it as it is |
@@ -121,7 +121,7 @@ The framework does four things a template does not show, and ejecting means doin
 | The framework | After ejecting |
 |---|---|
 | Packages the code and uploads it to `ServerlessDeploymentBucket` with a new key on every deploy | You upload the zip (`aws s3 cp`, your CI) and pass the key. The `S3Key` in the template is the one thing that changes per release |
-| Adds a `AWS::Lambda::Version` with a hash in its logical ID on each deploy | That ID changes on every deploy, so it cannot be a fixed name. Drop it (`DeletionPolicy: Retain` kept the old versions), or use `live_alias` from [CDK L2 constructs](cdk-l2.md#provisioned-concurrency-for-a-lambda) |
+| Adds a `AWS::Lambda::Version` with a hash in its logical ID on each deploy | That ID changes on every deploy, so it cannot be a fixed name. Drop it (`DeletionPolicy: Retain` kept the old versions), or use `live_alias` from [CDK L2 constructs](../patterns/cdk-l2.md#provisioned-concurrency-for-a-lambda) |
 | Creates the deployment bucket and its policy | Keep it while `Code` points into it. Move the code to a bucket you own, then remove it in a later change |
 | Builds IAM statements from `iamRoleStatements` | They are plain statements in the role. Typed [grants](../grants.md) replace the handwritten ones when you want them |
 

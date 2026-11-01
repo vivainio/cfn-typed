@@ -74,10 +74,10 @@ For any other event type, build it as a typed value first (`e: serverless.Functi
 
 ## SAM or the patterns
 
-SAM does the packaging side that [patterns](serverless.md) leave out (`sam build`, `sam package` upload the code and
+SAM does the packaging side that [patterns](../patterns/serverless.md) leave out (`sam build`, `sam package` upload the code and
 fill in `CodeUri`), and it expands to resources you do not see until deploy. Use SAM types when you want that
 workflow with checked properties. Use the plain `function` pattern when you want the exact resources in the
-template, as for the [Serverless Framework](serverless.md#moving-an-existing-service) migration, with logical IDs you choose.
+template, as for the [Serverless Framework](../patterns/serverless.md#moving-an-existing-service) migration, with logical IDs you choose.
 To move a SAM service that is already deployed, the steps in [Ejecting from the Serverless Framework](eject-serverless.md)
 work on its processed template (the page says how to get it).
 
@@ -134,7 +134,7 @@ It covers a fixed subset, the SAM release the types are pinned to, and says so w
 | `SNS` event | `SNS::Subscription` `{Name}{Event}` and `Lambda::Permission` `{Name}{Event}Permission` |
 | `Schedule`, `EventBridgeRule` event | `Events::Rule` `{Name}{Event}` and `Lambda::Permission` `{Name}{Event}Permission` |
 | `Api` event (REST) | `ApiGateway` `RestApi`, a `Resource` per path segment, a proxy `Method` per route, `Deployment` (its ID carries a hash of the routes, so new routes mean a new deployment), `Stage` `Prod` and the invoke permission, one REST API per function |
-| `HttpApi` event | `ApiGatewayV2` `Api`, `Integration`, `Route`, `Stage` and the invoke permission, one API per function, from the [`http_api`](http-api.md) pattern |
+| `HttpApi` event | `ApiGatewayV2` `Api`, `Integration`, `Route`, `Stage` and the invoke permission, one API per function, from the [`http_api`](../patterns/http-api.md) pattern |
 | `StateMachine` (`Definition`, `Policies`, `Schedule` and `EventBridgeRule` events) | `StepFunctions::StateMachine`, its `{Name}Role`, and for each event the rule and a role that may start the execution |
 | `SimpleTable` | `DynamoDB::Table`, on-demand unless `ProvisionedThroughput` is given |
 | `Connector`, or `Connectors` inside a function | `IAM::ManagedPolicy` `{Name}Policy` on the source function's role (`{Name}PolicyDestination{N}` for a list), for `Read` and `Write` on an SQS queue, SNS topic, S3 bucket, DynamoDB table or `SimpleTable`, or a function |

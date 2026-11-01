@@ -26,7 +26,7 @@ It also works with no Python code at all: give it template files (JSON, or YAML 
     $ cfn-typed emit template.yaml -f json          # convert between JSON and YAML
     $ cfn-typed check template.yaml --schemas cfn_types   # add the schema checks from a generated package
 
-Nothing else in `cfn_typed` imports this module, and it needs nothing beyond the standard library (`-f yaml` needs `cfn-typed[yaml]`).
+Nothing else in `cfn_typed` imports this module, and it needs nothing beyond the standard library and PyYAML.
 `stacks` is one builder (a function that returns the template) or a mapping from stack name to builder. A value can also be a
 `StackSpec(build, out=DIR)`, so that `emit` and `diff` know where that stack's template is rendered.
 """
@@ -91,10 +91,7 @@ def load_template(path: Path) -> dict[str, Any]:
     text = path.read_text()
     if path.suffix == ".json" or text.lstrip().startswith("{"):
         return json.loads(text)
-    try:
-        import yaml
-    except ImportError:
-        raise SystemExit(f"{path}: reading YAML needs PyYAML (pip install cfn-typed[yaml])") from None
+    import yaml
 
     class Loader(yaml.SafeLoader):
         pass

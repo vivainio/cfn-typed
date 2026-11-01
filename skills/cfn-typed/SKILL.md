@@ -71,7 +71,7 @@ from cfn_typed_sumo.types import sqs        # generated types, public; others vi
 - IAM: `from cfn_typed.permissions import Sqs` gives `Sqs.ReceiveMessage` (a typo is an attribute error);
   `cfn.allow(...)`/`cfn.deny(...)` build statements; `cfn_typed.grants` has the CDK's permission sets, e.g.
   `grants.Sqs.Queue.consume_messages.on(queue_arn)`. Grants are an opinion layer: pin the version.
-- Render: `cfn.to_json(template)`, `cfn.to_yaml(template)` (needs `cfn-typed[yaml]`).
+- Render: `cfn.to_json(template)`, `cfn.to_yaml(template)`.
 
 ## The command line
 
@@ -85,7 +85,7 @@ cfn-typegen search load balancer                                 # find a type n
 
 One module per service (`cfn_types/sqs.py`, `cfn_types/lambda_.py`; keywords get a trailing `_`). Never hand-edit them.
 
-`cfn-typed` works on template files (JSON, or YAML with `cfn-typed[yaml]`), so it also checks templates it did not write:
+`cfn-typed` works on template files (JSON or YAML), so it also checks templates it did not write:
 
 ```sh
 ty check                                          # types: the main safety net

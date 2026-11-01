@@ -3,7 +3,7 @@
 `cfn_typed.cli` is an optional command line that you call from your own `main()`. It is not a
 `cfn-typed` command: your script says which stacks exist, and the library gives them four
 subcommands, `emit`, `check`, `diff` and `ls` (the standalone `cfn-typed` command adds `import`).
-Nothing else in the package imports it, and it needs nothing beyond the standard library (`-f yaml` needs `cfn-typed[yaml]`).
+Nothing else in the package imports it, and it needs nothing beyond the standard library and PyYAML.
 
 ```python
 # stacks.py
@@ -34,8 +34,8 @@ to do with it. Every subcommand takes stack names and uses all of them when you 
 ## Without any Python: `cfn-typed`
 
 The same subcommands work on template files, so the command line is useful for a template that
-`cfn-typed` did not write. Install the package (`uv tool install 'cfn-typed[yaml]'`, or
-`uvx --from 'cfn-typed[yaml]' cfn-typed ...`, or `python -m cfn_typed.cli`) and give it files, JSON
+`cfn-typed` did not write. Install the package (`uv tool install cfn-typed`, or
+`uvx --from cfn-typed cfn-typed ...`, or `python -m cfn_typed.cli`) and give it files, JSON
 or YAML with the short-form intrinsics (`!Ref`, `!GetAtt A.Arn`, `!Sub`, ...):
 
 ```text

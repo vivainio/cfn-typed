@@ -3,7 +3,7 @@ name = "reference-cfn"
 version = "0"
 requires-python = ">=3.14"
 # --8<-- [start:deps]
-dependencies = ["cfn-typed[yaml]"]
+dependencies = ["cfn-typed"]
 
 [dependency-groups]
 dev = ["pytest", "ty"]

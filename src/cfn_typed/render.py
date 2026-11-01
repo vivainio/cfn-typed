@@ -1,6 +1,6 @@
 """Render a template as JSON, or as readable YAML with CloudFormation's short-form intrinsics.
 
-YAML needs PyYAML (`pip install cfn-typed[yaml]`); JSON needs nothing.
+YAML uses PyYAML, a regular dependency.
 """
 
 import json

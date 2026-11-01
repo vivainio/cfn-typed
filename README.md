@@ -13,7 +13,7 @@ that is a judgement (grants, patterns) lives in a place marked as an opinion. Th
 **[Read the book](https://vivainio.github.io/cfn-typed/)** for a getting-started guide, a gallery of
 pattern helpers (a Lambda role, a queue with its dead-letter queue, ...) and a
 reference page per resource. Install from [PyPI](https://pypi.org/project/cfn-typed/):
-`uv add cfn-typed` (or `uv add 'cfn-typed[yaml]'` for YAML output).
+`uv add cfn-typed`.
 
 ```python
 import json
@@ -78,7 +78,7 @@ so a shared "defaults" package can expose a VPC id or subnet list as variables. 
 
 ## JSON or YAML
 
-`cfn.to_json(template)` and `cfn.to_yaml(template)` (YAML needs `cfn-typed[yaml]`) render
+`cfn.to_json(template)` and `cfn.to_yaml(template)` render
 the same template. The YAML uses short-form intrinsics (`!Ref`, `!GetAtt A.Arn`, ...).
 
 ## Testing

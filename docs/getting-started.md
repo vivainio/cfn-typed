@@ -7,7 +7,7 @@ uv add cfn-typed          # the runtime pieces and the cfn-typegen command
 uv add --dev ty           # the type checker this project is tested with
 ```
 
-Python 3.14 or later is required. The `yaml` extra adds YAML output (see below).
+Python 3.14 or later is required. YAML output uses PyYAML, which is installed with it.
 
 ## Generate the types you use
 
@@ -79,8 +79,6 @@ Intrinsics use CloudFormation's short forms (`!Ref`, `!GetAtt Jobs.Arn`, `!Sub`,
 multi-line strings such as `UserData` become `|` blocks. A list that is shared between
 resources (the tags in the examples) is repeated, never turned into a YAML anchor.
 
-!!! note "YAML needs PyYAML"
-    JSON has no dependencies. For YAML install the extra: `uv add 'cfn-typed[yaml]'`.
 
 !!! note "Nested short forms"
     CloudFormation does not allow a short form directly inside another one

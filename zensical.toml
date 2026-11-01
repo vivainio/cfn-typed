@@ -40,6 +40,7 @@ nav = [
     { "Serverless Framework in a few lines" = "patterns/serverless.md" },
     { "Ejecting from the Serverless Framework" = "patterns/eject-serverless.md" },
     { "AWS SAM" = "patterns/sam.md" },
+    { "Uploading code: cloudformation package" = "patterns/package.md" },
     { "Working with state machines" = "patterns/state-machines.md" },
     { "Mandatory tags" = "patterns/mandatory-tags.md" },
     { "Company rules" = "patterns/company-rules.md" },

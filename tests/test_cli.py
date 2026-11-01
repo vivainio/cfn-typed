@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from cfn_typed.cli import main, skill_dir
+from cfn_typed.cli import StackSpec, main, skill_dir
 
 
 def good() -> dict:
@@ -147,3 +147,49 @@ def test_skill_dir_holds_the_linked_resources(capsys) -> None:
     assert (directory / "SKILL.md").is_file()
     links = re.findall(r"\]\((resources/[^)#]+)", (directory / "SKILL.md").read_text())
     assert links and all((directory / link).is_file() for link in links)
+
+
+def test_stackspec_emit_writes_each_stack_to_its_own_directory(tmp_path) -> None:
+    stacks = {"a": StackSpec(good, out=tmp_path / "x"), "b": StackSpec(good, out=str(tmp_path / "y"))}
+    assert run(stacks, "emit") == 0
+    assert (tmp_path / "x" / "a.yaml").exists() and (tmp_path / "y" / "b.yaml").exists()
+    assert not (tmp_path / "x" / "b.yaml").exists()
+
+
+def test_stackspec_emit_dash_prints_and_dir_overrides(tmp_path, capsys) -> None:
+    stacks = {"a": StackSpec(good, out=tmp_path / "x")}
+    assert run(stacks, "emit", "a", "-o", "-") == 0
+    assert "AWS::SQS::Queue" in capsys.readouterr().out and not (tmp_path / "x").exists()
+    assert run(stacks, "emit", "-o", str(tmp_path / "over")) == 0
+    assert (tmp_path / "over" / "a.yaml").exists() and not (tmp_path / "x").exists()
+
+
+def test_stackspec_emit_mixed_needs_a_directory_for_the_rest(tmp_path, capsys) -> None:
+    stacks = {"a": StackSpec(good, out=tmp_path), "b": good}
+    assert run(stacks, "emit") == 2
+    assert "b" in capsys.readouterr().err and not list(tmp_path.iterdir())
+
+
+def test_stackspec_diff_uses_each_stacks_directory(tmp_path, capsys) -> None:
+    stacks = {"a": StackSpec(good, out=tmp_path / "x"), "b": StackSpec(good, out=tmp_path / "y")}
+    assert run(stacks, "diff") == 1
+    assert run(stacks, "diff", "--update") == 0
+    assert run(stacks, "diff") == 0 and run(stacks, "diff", "a") == 0
+    (tmp_path / "y" / "b.yaml").write_text("old\n")
+    assert run(stacks, "diff", "a") == 0 and run(stacks, "diff", "b") == 1
+
+
+def test_stackspec_diff_explicit_directory_still_wins(tmp_path) -> None:
+    stacks = {"a": StackSpec(good, out=tmp_path / "x")}
+    assert run(stacks, "diff", str(tmp_path / "other"), "--update") == 0
+    assert (tmp_path / "other" / "a.yaml").exists() and not (tmp_path / "x").exists()
+
+
+def test_diff_without_any_directory_is_an_error(capsys) -> None:
+    assert run({"a": good}, "diff", "a") == 2
+    assert "no directory" in capsys.readouterr().err
+
+
+def test_stackspec_ls_shows_the_directory(tmp_path, capsys) -> None:
+    assert run({"a": StackSpec(good, out=tmp_path)}, "ls") == 0
+    assert f"-> {tmp_path}" in capsys.readouterr().out

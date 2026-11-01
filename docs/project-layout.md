@@ -53,10 +53,12 @@ my-service/
 --8<-- "examples/reference/cfn/cfn-typegen.toml"
 ```
 
-**`patterns/`** holds the helpers your stacks share. This is where a pattern goes when you
-[eject it from sumo](sumo.md#recommended-start-with-sumo-then-eject-what-you-use): in the reference project,
+**`patterns/`** holds the helpers your stacks share, and most of them will be your own: the functions that say how
+*your* company names things, tags them and wires a service up. Some may start as a copy of a sumo pattern that you
+[ejected](sumo.md#recommended-start-with-sumo-then-eject-what-you-use): in the reference project,
 `patterns/queues.py` is `queue_with_dlq` copied from `cfn_typed_sumo.patterns` with one change, its types come from
-the project's own `cfn_types`. The project does not depend on `cfn-typed-sumo` at all.
+the project's own `cfn_types`. The project does not depend on `cfn-typed-sumo` at all. Either way a pattern is just
+a function in your repository.
 
 **`stacks/`** has a module per kind of stack. There is one template per stack and no `prod` or `dev` variant of
 it: the stage is a CloudFormation [parameter](patterns/parameters.md) (`Stage` here), and the same rendered file

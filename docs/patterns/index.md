@@ -33,6 +33,15 @@ a dict or any handle, via the `HasResources` protocol.
   `Ref`/`GetAtt`.
 - **Optional pieces are only emitted when given.** No `Tags: []` noise in the output.
 
+## Your own patterns
+
+The patterns in this book are examples and a starting point. The ones that pay off most are business specific, and only you can
+write them: your naming scheme, your mandatory tags and rules, how a service is wired to your platform. Write them as
+ordinary functions in your own repository (see [a typical project](../project-layout.md)), share them between
+repositories with [Distributing patterns](../distributing.md), and enforce the company's conventions with
+[mandatory tags](mandatory-tags.md) and [company rules](company-rules.md). Copy a pattern from here or from
+`cfn-typed-sumo` when it is close to what you need, and change it.
+
 ## Where the code lives
 
 The patterns in this book that live in a package ship as **`cfn-typed-sumo`**, a second

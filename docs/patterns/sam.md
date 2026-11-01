@@ -78,6 +78,8 @@ SAM does the packaging side that [patterns](serverless.md) leave out (`sam build
 fill in `CodeUri`), and it expands to resources you do not see until deploy. Use SAM types when you want that
 workflow with checked properties. Use the plain `function` pattern when you want the exact resources in the
 template, as for the [Serverless Framework](serverless.md#moving-an-existing-service) migration, with logical IDs you choose.
+To move a SAM service that is already deployed, the steps in [Ejecting from the Serverless Framework](eject-serverless.md)
+work on its processed template (the page says how to get it).
 
 ## SAM without SAM: `expand`
 

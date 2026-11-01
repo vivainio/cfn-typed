@@ -1,5 +1,10 @@
 # Ejecting from the Serverless Framework
 
+!!! note "Two kinds of ejecting"
+    This page is about leaving the Serverless Framework (or SAM) for a service that is already deployed. Moving
+    patterns you used from `cfn-typed-sumo` into your own package is a different thing, described in
+    [cfn-typed-sumo](../sumo.md#recommended-start-with-sumo-then-eject-what-you-use).
+
 The [Serverless Framework in a few lines](serverless.md) page shows what a `functions:` entry becomes as patterns. This page
 is for a service that already runs: you want to stop using the framework for it, and you do not want CloudFormation to
 replace anything when you do.

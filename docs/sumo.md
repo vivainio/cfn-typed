@@ -84,5 +84,13 @@ You do not have to eject everything at once. Ejecting a pattern as soon as you w
 trigger, and a pattern you have not touched can keep coming from sumo until you do. Once you have, remove
 `cfn-typed-sumo` from your dependencies so no import quietly slips back.
 
+Ejecting is not the only source of your own patterns, and most of them will not come from sumo. The patterns that
+matter most to a company are specific to it: its naming, its mandatory tags and rules, its account layout, its way of
+wiring a service to its platform. Sumo cannot have those, so write them yourself in `patterns/`, the same way: plain
+functions over plain dicts, built with your own generated types. [Mandatory tags](patterns/mandatory-tags.md) and
+[company rules](patterns/company-rules.md) are examples of that kind, and
+[Distributing patterns](distributing.md) is for sharing them between repositories. Treat sumo as a place to start
+from, not as the only source.
+
 If you would rather not follow a volatile API from the start, skip step 1 and take what you need from sumo's
 source straight away. The patterns are plain functions over plain dicts, so copying one costs nothing.

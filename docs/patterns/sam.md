@@ -81,6 +81,37 @@ template, as for the [Serverless Framework](serverless.md#moving-an-existing-ser
 To move a SAM service that is already deployed, the steps in [Ejecting from the Serverless Framework](eject-serverless.md)
 work on its processed template (the page says how to get it).
 
+## Using SAM from cfn-typed, or leaving it
+
+You do not have to choose between SAM and `cfn-typed` all at once. There are two directions, and both start from the
+`build()` above.
+
+**Keep SAM, and write its template in Python.** `cfn-typed` produces the SAM template; SAM still packages and deploys.
+Render it next to the code, because `CodeUri` is relative to the template file, and commit it like any other
+[rendered template](../testing.md):
+
+```python
+Path("template.yaml").write_text(cfn.to_yaml(build()))
+```
+
+then `sam build` and `sam deploy` as before (`sam local` too). You get checked property names, one `Globals`, and
+`Transform` written for you, and nothing changes for the people who run SAM. SAM's own translator accepts the
+result: it needs the local `CodeUri` replaced by an S3 location, which is what `sam package` does.
+
+**Leave SAM, and keep the Python.** `sam.expand(build())` turns the same template into plain CloudFormation, with no
+`Transform` and nothing of SAM in it (see [`expand`](#sam-without-sam-expand) below). Two things change. `expand` does
+not package code, so a local `CodeUri` such as `"src/"` is an error, and you upload the artifact yourself and give its
+S3 location (`s3://bucket/key.zip`, or a `Bucket` and `Key`). And the HTTP and REST APIs are replaced when a stack
+that SAM deployed moves over, because their logical IDs differ; the function, its role, the event mappings,
+rules and permissions keep SAM's IDs.
+
+**Already deployed with SAM, and not in Python yet?** Do not start from SAM's types. Take the deployed stack's
+processed template and [import it](eject-serverless.md#take-the-template): you get plain resources under the
+IDs the stack already has, and then you tidy them by hand.
+
+Keep SAM while you rely on `sam build` (it installs dependencies and builds the package) or `sam local`. Leave it when
+you want the exact resources in the template, or a pipeline where transforms are not allowed.
+
 ## SAM without SAM: `expand`
 
 `sam.expand(template)` does the transform in Python. It takes a template of `serverless.*` resources (and `Globals`)

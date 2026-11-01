@@ -149,39 +149,47 @@ If you are moving off SAM or the Serverless Framework, `sam deploy` and `sls dep
 upload, render and deploy. Plain CloudFormation has them as separate steps, which is more to write once and easier to
 reason about afterwards.
 
-The premise is **one build result, deployed from there to several regions** (and stages). You build and render once. The
-build result is the zip and the template, and a deploy takes that result and puts the zip where the target region
-can read it. Nothing is rebuilt or re-rendered per region. This flow works well with [`code.s3`](#where-the-code-is).
+The premise is **one build result, deployed from there to several regions** (and stages). You build once. The
+build result is the zips, and a deploy takes them and puts each where the target region can read it. Nothing is
+rebuilt per region. The template does not change per release either: it is rendered and committed like any other, and
+the build's keys reach it as stack parameters. This flow works well with [`code.s3`](#where-the-code-is).
 
 This skips `aws cloudformation package`. That command rewrites a template for one bucket in one region, which is the opposite
 of a build result you reuse: the packaged template is tied to the bucket it was uploaded to. Here the upload is a copy you
-control, and the template already holds the bucket and key.
+control, and the template holds the bucket and a parameter for the key.
 
 **Build, once per commit**
 
-1. Build the zip.
-2. Choose the key from the build, such as `worker/<git-sha>.zip`.
-3. Render the template with that key. The bucket is `sub("deploy-artifacts-${AWS::Region}")`, so one template
-   serves every region.
-4. Keep the zip and the rendered template together as the build artifact.
+1. Build each zip (`worker.zip`, `api.zip`, ...).
+2. Choose a key for each from the build, such as `worker/<git-sha>.zip` and `api/<git-sha>.zip`.
+3. Keep the zips, and the keys, as the build artifact.
+
+**The template: one key parameter for each package**
 
 ```python
-def build(key: str) -> Template:
-    ...
-    function("Worker", code=code.s3(sub("deploy-artifacts-${AWS::Region}"), key), handler="app.handler", runtime="python3.13")
+params = Params()
+worker_key = params.string("WorkerCodeKey")      # no default: a deploy without it fails
+api_key = params.string("ApiCodeKey")
+bucket = sub("deploy-artifacts-${AWS::Region}")  # one template serves every region
+
+function("Worker", code=code.s3(bucket, worker_key), handler="app.handler", runtime="python3.13")
+function("Api", code=code.s3(bucket, api_key), handler="api.handler", runtime="python3.13")
 ```
 
 **Deploy, for each stage and region**
 
-1. Copy the zip from the build artifact into that region's bucket, under the same key.
-2. Check that it is there.
-3. Deploy the rendered template in that region.
+1. Copy each zip from the build artifact into that region's bucket, under its key.
+2. Check that each is there.
+3. Deploy the committed template with the keys as parameters.
 
 ```text
-aws s3 cp dist/worker.zip s3://deploy-artifacts-$REGION/worker/$SHA.zip --region $REGION
-aws s3api head-object --bucket deploy-artifacts-$REGION --key worker/$SHA.zip --region $REGION
-aws cloudformation deploy --region $REGION --template-file rendered/worker.yaml --stack-name worker-$STAGE \
-    --parameter-overrides Stage=$STAGE --capabilities CAPABILITY_IAM
+for pkg in worker api; do
+  aws s3 cp dist/$pkg.zip s3://deploy-artifacts-$REGION/$pkg/$SHA.zip --region $REGION
+  aws s3api head-object --bucket deploy-artifacts-$REGION --key $pkg/$SHA.zip --region $REGION
+done
+aws cloudformation deploy --region $REGION --template-file rendered/app.yaml --stack-name app-$STAGE \
+    --parameter-overrides WorkerCodeKey=worker/$SHA.zip ApiCodeKey=api/$SHA.zip Stage=$STAGE \
+    --capabilities CAPABILITY_IAM
 ```
 
 If the build artifacts are in S3 as well, `aws s3 cp s3://build-bucket/key s3://deploy-artifacts-$REGION/key` copies
@@ -189,13 +197,20 @@ between buckets without downloading (for another region it needs `--source-regio
 
 Why it is arranged this way:
 
-- **Render once.** What you tested is what you deploy. Everything that differs between stages (names, sizes,
-  subnets) is a [parameter](parameters.md) and not a re-render.
-- **The key is the identity of the build.** The same key in every regional bucket means the template needs no
-  per-region edits, and the diff of a release is the one key.
+- **The template does not change per release.** It is rendered and committed, and what changes is the parameters.
+  Each package has its own key, so a release that changes only the worker updates only the worker: the other keys
+  are the same, so those functions are not touched.
+- **The key is the identity of the build.** The same keys in every regional bucket mean the template needs no
+  per-region edits.
+- **The record of a release is the stack's parameters, not a diff.** The keys are not in `rendered/`, so log them in CI
+  or tag the stack with the SHA.
 - **The copy is the only step that writes to the deploy bucket.** Give the deploying role write access to its regional bucket
   and nothing else, and read access on the build artifact.
-- **Keep the old builds** in each regional bucket for [rollback](#keep-the-uploaded-code-after-you-deploy).
+- **Keep the old builds** in each regional bucket for [rollback](#keep-the-uploaded-code-after-you-deploy). Rollback
+  restores the previous parameter values with the previous template, so each previous key must still exist.
+- **Do not read the keys from SSM with a dynamic reference.** I believe CloudFormation does not see a changed
+  resolved value when the template and parameters are the same, so the functions would not update. Pass the keys
+  as parameters.
 
 If the code is small enough to [inline](#where-the-code-is), none of this is needed: the code is in the template, and
 the template is the whole release.

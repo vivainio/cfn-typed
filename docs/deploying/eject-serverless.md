@@ -82,6 +82,42 @@ time you notice is a function that stops reading its queue.
 If you have the `serverless.yml` and the deploy script, read them next to the template, because some values in it were put there
 by steps you cannot see in the JSON.
 
+The framework resolves every `${…}` on the machine that runs `sls`, before it builds the template. So whatever the
+variable was, `original.json` holds the value it had that day, and ejecting from the template is safe. The table matters
+for the next step: deciding what each one becomes in Python, so the values do not stay frozen.
+
+| `serverless.yml` | What it reads | In Python |
+|---|---|---|
+| `${self:custom.x}`, `${self:provider.region}` | another key in the same file | a variable or function argument. This is the trivial one |
+| `${opt:stage}`, `${opt:memory, 1024}` | a CLI flag, with a default | `build(stage, memory=1024)`, with `argparse` or [`cfn_typed.cli`](../cli.md) if you want flags |
+| `${sls:stage}` | `${opt:stage, self:provider.stage, "dev"}` | the `stage` argument |
+| `${sls:instanceId}` | a random id for each CLI run | `uuid.uuid4().hex`. It is used in `ApiGatewayDeployment${sls:instanceId}`, so copy the one from the template instead, as in [`deployment_id`](#then-use-the-patterns) |
+| `${aws:region}`, `${aws:partition}` | `${opt:region, self:provider.region, "us-east-1"}`, and a lookup of the ARN prefix | a `region` argument, or `cfn.ref("AWS::Region")` and `cfn.ref("AWS::Partition")` when the value should be the deployed one |
+| `${aws:accountId}` | an STS call with your credentials | `cfn.ref("AWS::AccountId")` or `${AWS::AccountId}` in `cfn.sub(...)`, which is better than a literal because it works in any account |
+| `${env:NAME}`, `${env:NAME, default}` | the process environment, and `.env` and `.env.${stage}` files | `os.environ["NAME"]` (and `os.environ.get("NAME", default)`). The `.env` files need `python-dotenv` or an explicit load |
+| `${file(./x.yml):key}`, `${file(./x.json)}` | a YAML or JSON file, a key or all of it | `yaml.safe_load` or `json.loads`, then index it. Often a whole `resources:` block moves into typed resources instead |
+| `${file(./x.js):fn}`, `${file(./x.ts)}` | a JavaScript or TypeScript module, an export or a function that gets `options`, `resolveVariable` and `resolveConfigurationProperty` | an ordinary Python function. This is the case where Python is simply better: the code was always the point |
+| `${param:domain}`, `stages.prod.params` | a value that is set per stage | a dict keyed by stage: `PARAMS[stage]["domain"]` |
+| `${strToBool(${ssm:X})}` | `"true"` or `"false"` (also `"0"`, `"1"`) to a boolean | `value.lower() in ("true", "1")`. Anything else was an error in the framework, so raise too |
+| `${git:branch}`, `sha1`, `commit`, `message`, `describe`, `isDirty`, `user`, `email`, `repository`, `tags` | the checkout | `subprocess.run(["git", "rev-parse", "--short", "HEAD"], ...)`. Better as an argument that CI passes in, so rendering does not depend on a checkout |
+| `${ssm:/path}`, `${aws:ssm:/path}` | read at package time, from SSM Parameter Store or Secrets Manager | **pick one.** `params.ssm(...)` (an SSM-typed [parameter](../patterns/parameters.md)) or `cfn.dynamic_ssm("/path")` (`{{resolve:ssm:/path}}`) read it at deploy time, which is usually what you wanted. `boto3` at render time freezes the value in the template, the same as the framework did |
+| `${cf:stack.Output}` | an output of another stack, read at package time | `cfn.import_value("Name")` if that stack exports it. Otherwise a `boto3` call at render time, or a parameter |
+| `${s3:bucket/key}` | the text of an S3 object | `boto3`, at render time. Rare, and it freezes the value like `ssm` |
+| `${terraform:outputs:name}`, `${vault:path.key}`, `${doppler:project/KEY}` | a Terraform state output, or a secret | the same as `ssm`: a parameter or a dynamic reference for secrets (never in the template text), a render-time call for the rest |
+| `${service:other.Output}` | another service's output, in Serverless Compose only | an import value, or a parameter |
+| `${a, b}` | the first one that exists | `x if x is not None else b`, or `dict.get` |
+| `${file(./config.${sls:stage}.json):CREDS}` | a variable inside another | f-strings and function calls, so nesting is not a feature to translate |
+
+The framework only substitutes in values, never in keys: no variable can make a logical ID. That is one thing
+Python does better. A resource name built in a loop is just a string.
+
+Three of these, `ssm`, `cf` and `s3`, need a decision and not a translation. The framework made a network call when
+you ran `sls package`, and what is in the template is that answer. If you keep the literal, the template is the same as it
+was, and a change in the parameter store does not reach the stack until you render again. If you switch to a deploy-time
+reference, the template changes, which is what you want, and which a change set shows. Do it as a separate step from the ejection.
+
+A few of these are described in more detail:
+
 - **`${self:…}` and `${opt:…}`** are resolved when `sls package` runs, so the template holds the literal (`dev`,
   `eu-west-1`). These are the `SERVICE` and `STAGE` values in `eject.py`, and `STAGE` is a function argument if one
   file should render every stage.

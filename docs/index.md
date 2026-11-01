@@ -30,6 +30,24 @@ lambda_.function(
 )
 ```
 
+## The book is bigger than the package
+
+This book looks big, and the package is not. The core is small and plain: dicts, a few intrinsics, a type generator
+and a renderer, and you can read it in an afternoon. Most of the pages are not documentation of built-in behavior.
+They show how the package solves problems that come up in real stacks (queues with a dead-letter queue, a function
+and its role, a release flow, leaving SAM) and are meant as **inspiration**: read one, copy what fits, change what
+does not. When a page and your own needs disagree, your needs win. The code on the page is ordinary Python, so there
+is nothing to be loyal to.
+
+The book also covers what you have to learn when you move to plain CloudFormation from a build system that did more for
+you. SAM, the Serverless Framework and the CDK each take care of things the template does not show: they upload your
+code, name the resources, pick the IAM statements, and decide how a release is deployed. Plain CloudFormation does
+none of that, so those pages ([uploading code](patterns/package.md), [leaving the Serverless Framework](patterns/eject-serverless.md),
+[AWS SAM](patterns/sam.md)) explain what the tool was doing and what you do instead. These are
+actually easy things: an upload is a copy to a bucket, a name is a string, and a release is a copy and a `deploy` command. They only
+look hard while a tool hides them, and once you have seen each one written out there is little left to learn. That part is
+about CloudFormation more than about this package, and it holds whichever way you write the template.
+
 ## Facts first, opinions fenced
 
 cfn-typed tries to lock down **facts** and keep them primary: the shapes AWS publishes for every resource, and the

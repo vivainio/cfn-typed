@@ -1,9 +1,21 @@
 # A typical project
 
-What a repository that uses `cfn-typed` tends to look like. Nothing here is required, but this layout is
-**checked on every change**: it is [`examples/reference/cfn`](https://github.com/vivainio/cfn-typed/tree/main/examples/reference/cfn),
-a real project that CI syncs, generates the types for, checks, diffs, tests and type-checks the way you would,
-and every code block below is pulled from its files.
+`cfn-typed` does not need a project layout. At its smallest it is a function that returns a dict, and you write
+that dict out yourself:
+
+```python
+import json
+json.dump(build(), open("template.json", "w"), indent=2)
+```
+
+The generator, the CLI, the golden-file tests and the sumo patterns are all optional. Use as much or as little as is
+useful, and ignore this page if one script is enough.
+
+This page is for the case where the infrastructure has grown into a few stacks and a team. It shows one layout that
+works, and it is **checked on every change**: it is
+[`examples/reference/cfn`](https://github.com/vivainio/cfn-typed/tree/main/examples/reference/cfn), a real project
+that CI syncs, generates the types for, checks, diffs, tests and type-checks the way you would, and every code block
+below is pulled from its files. Take the parts you want.
 
 The idea is to keep everything about the infrastructure in one directory, `cfn/`, so the rest of the
 repository does not need to know that Python is involved in it.

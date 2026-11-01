@@ -41,7 +41,7 @@ jobs:
         # the version is pinned in the dev group of pyproject.toml; errors fail the build, warnings are printed only
         run: uv run cfn-lint --non-zero-exit-code error examples/rendered/*.yaml examples/reference/cfn/rendered/*.yaml examples/reference/cfn/rendered/*/*.yaml
 
-      # The reference project is the layout the book recommends (docs/project-layout.md), run the way a user would:
+      # The reference project is one layout the book suggests (docs/project-layout.md), run the way a user would:
       # its own environment, its own generated types, its own checks. `uv run` starts from a clean sync.
       - name: Reference project
         working-directory: examples/reference/cfn

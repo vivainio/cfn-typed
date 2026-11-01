@@ -89,7 +89,7 @@ for the next step: deciding what each one becomes in Python, so the values do no
 | `serverless.yml` | What it reads | In Python |
 |---|---|---|
 | `${self:custom.x}`, `${self:provider.region}` | another key in the same file | a variable or function argument. This is the trivial one |
-| `${opt:stage}`, `${opt:memory, 1024}` | a CLI flag, with a default | `build(stage, memory=1024)`, with `argparse` or [`cfn_typed.cli`](../cli.md) if you want flags |
+| `${opt:stage}`, `${opt:memory, 1024}` | a CLI flag, with a default | a field of a settings dataclass, which [`cfn_typed.cli`](../cli.md#settings-a-dataclass-whose-fields-are-flags) turns into `--stage` and `--memory 2048` |
 | `${sls:stage}` | `${opt:stage, self:provider.stage, "dev"}` | the `stage` argument |
 | `${sls:instanceId}` | a random id for each CLI run | `uuid.uuid4().hex`. It is used in `ApiGatewayDeployment${sls:instanceId}`, so copy the one from the template instead, as in [`deployment_id`](#then-use-the-patterns) |
 | `${aws:region}`, `${aws:partition}` | `${opt:region, self:provider.region, "us-east-1"}`, and a lookup of the ARN prefix | a `region` argument, or `cfn.ref("AWS::Region")` and `cfn.ref("AWS::Partition")` when the value should be the deployed one |

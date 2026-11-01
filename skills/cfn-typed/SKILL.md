@@ -85,6 +85,8 @@ cfn-typegen search load balancer                                 # find a type n
 
 One module per service (`cfn_types/sqs.py`, `cfn_types/lambda_.py`; keywords get a trailing `_`). Never hand-edit them.
 
+For a builder that needs a stage or a size, pass `cli.main(stacks, settings=Settings)`: the dataclass's fields become flags (`--stage prod`), a field with no default is required, and a `StackSpec(build, settings=Other)` overrides it for one stack.
+
 `cfn-typed` works on template files (JSON or YAML), so it also checks templates it did not write:
 
 ```sh

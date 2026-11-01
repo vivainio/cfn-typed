@@ -29,14 +29,22 @@ It also works with no Python code at all: give it template files (JSON, or YAML 
 Nothing else in `cfn_typed` imports this module, and it needs nothing beyond the standard library and PyYAML.
 `stacks` is one builder (a function that returns the template) or a mapping from stack name to builder. A value can also be a
 `StackSpec(build, out=DIR)`, so that `emit` and `diff` know where that stack's template is rendered.
+`settings=Settings` (a dataclass) turns its fields into flags, and each builder that takes an argument gets an instance; see `main`.
 """
 
 import argparse
+import dataclasses
 import difflib
+import enum
 import fnmatch
+import functools
 import importlib
+import inspect
 import json
+import os
 import sys
+import types
+import typing
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,7 +54,7 @@ from typing import Any
 from cfn_typed.checks import Rule, find_all_problems
 from cfn_typed.testing import render_for
 
-type Builder = Callable[[], Mapping[str, Any]]
+type Builder = Callable[..., Mapping[str, Any]]  # no argument, or one settings instance
 
 
 @dataclass(frozen=True)
@@ -57,10 +65,14 @@ class StackSpec:
     write and compare `<out>/<name>.yaml` without being told a directory; `-o DIR` (or the directory argument of `diff`)
     still overrides it for every stack. `out` is used as given, so relative paths are relative to the current directory:
     build it from `Path(__file__)` to make it independent of where the script is run.
+
+    `settings` is a dataclass for this stack, in place of the one given to `main`: its fields are command line flags, and
+    `build` is called with an instance. See `main`.
     """
 
     build: Builder
     out: Path | str | None = None
+    settings: type | None = None
 
     @property
     def out_dir(self) -> Path | None:
@@ -299,17 +311,171 @@ def _diff(args: argparse.Namespace, chosen: Mapping[str, StackSpec]) -> int:
     return 1 if failed else 0
 
 
+@dataclass(frozen=True)
+class _Kind:
+    convert: Callable[[str], Any]
+    boolean: bool = False
+    many: bool = False
+
+
+def _to_bool(text: str) -> bool:
+    if text.lower() in ("true", "1", "yes"):
+        return True
+    if text.lower() in ("false", "0", "no"):
+        return False
+    raise argparse.ArgumentTypeError(f"{text!r} is not true or false")
+
+
+def _kind(tp: Any, name: str) -> _Kind:
+    origin = typing.get_origin(tp)
+    if origin is types.UnionType or origin is typing.Union:
+        args = [a for a in typing.get_args(tp) if a is not type(None)]
+        if len(args) == 1:
+            return _kind(args[0], name)
+    elif origin is typing.Literal:
+        choices = {str(v): v for v in typing.get_args(tp)}
+
+        def pick(text: str) -> Any:
+            if text not in choices:
+                raise argparse.ArgumentTypeError(f"{text!r} is not one of {', '.join(choices)}")
+            return choices[text]
+
+        return _Kind(pick)
+    elif origin is list:
+        (item,) = typing.get_args(tp) or (str,)
+        return _Kind(_kind(item, name).convert, many=True)
+    elif tp is bool:
+        return _Kind(_to_bool, boolean=True)
+    elif tp in (str, int, float):
+        return _Kind(tp)
+    elif tp is Path:
+        return _Kind(Path)
+    elif isinstance(tp, type) and issubclass(tp, enum.Enum):
+        def member(text: str) -> Any:
+            if text not in tp.__members__:
+                raise argparse.ArgumentTypeError(f"{text!r} is not one of {', '.join(tp.__members__)}")
+            return tp[text]
+
+        return _Kind(member)
+    raise TypeError(f"settings field {name!r}: {tp!r} cannot be a command line flag (use str, int, float, bool, Path, an Enum, a Literal, a list of those, or X | None)")
+
+
+@dataclass(frozen=True)
+class _Setting:
+    name: str
+    tp: Any
+    kind: _Kind
+    default: Any
+    required: bool
+    env: str | None
+    help: str
+
+    @property
+    def flag(self) -> str:
+        return "--" + self.name.replace("_", "-")
+
+    @property
+    def dest(self) -> str:
+        return f"settings__{self.name}"  # never the same as a built-in option's name
+
+
+def _settings_of(cls: type) -> dict[str, _Setting]:
+    if not (isinstance(cls, type) and dataclasses.is_dataclass(cls)):
+        raise TypeError(f"settings must be a dataclass, not {cls!r}")
+    hints = typing.get_type_hints(cls)
+    out: dict[str, _Setting] = {}
+    for f in dataclasses.fields(cls):
+        if not f.init:
+            continue
+        required = f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING
+        factory = f.default_factory
+        default = None if required else (f.default if factory is dataclasses.MISSING else factory())
+        out[f.name] = _Setting(f.name, hints[f.name], _kind(hints[f.name], f.name), default, required, f.metadata.get("env"), f.metadata.get("help", ""))
+    return out
+
+
+def _all_settings(specs: Mapping[str, StackSpec], shared: type | None) -> dict[str, _Setting]:
+    """The flags of every settings class in use. A name that two classes declare has to have the same type; whether it has a default is up to each class, and is checked when that class's stack is built."""
+    merged: dict[str, _Setting] = {}
+    owner: dict[str, type] = {}
+    for cls in {c for spec in specs.values() if (c := spec.settings or shared) is not None}:
+        for name, setting in _settings_of(cls).items():
+            if name in merged and merged[name].tp != setting.tp:
+                raise TypeError(f"settings field {name!r} has a different type in {owner[name].__name__} and {cls.__name__}")
+            merged.setdefault(name, setting)
+            owner.setdefault(name, cls)
+    return merged
+
+
+def _add_flags(p: argparse.ArgumentParser, settings: Mapping[str, _Setting]) -> None:
+    for s in settings.values():
+        note = "required" if s.required else f"default: {s.default}"
+        text = " ".join(part for part in (s.help, f"({note}{', or $' + s.env if s.env else ''})") if part)
+        try:
+            if s.kind.boolean:
+                p.add_argument(s.flag, dest=s.dest, action=argparse.BooleanOptionalAction, default=argparse.SUPPRESS, help=text)
+            else:
+                p.add_argument(s.flag, dest=s.dest, type=s.kind.convert, action="append" if s.kind.many else "store", default=argparse.SUPPRESS, metavar=s.name.upper(), help=text)
+        except argparse.ArgumentError:
+            raise TypeError(f"settings field {s.name!r}: {s.flag} is already an option of the {p.prog.split()[-1]} command, rename the field") from None
+
+
+def _instance(cls: type, args: argparse.Namespace, ap: argparse.ArgumentParser, stack: str) -> Any:
+    values: dict[str, Any] = {}
+    missing: list[str] = []
+    for s in _settings_of(cls).values():
+        if hasattr(args, s.dest):
+            values[s.name] = getattr(args, s.dest)
+        elif s.env and s.env in os.environ:
+            try:
+                values[s.name] = [s.kind.convert(v) for v in os.environ[s.env].split(",")] if s.kind.many else s.kind.convert(os.environ[s.env])
+            except (ValueError, argparse.ArgumentTypeError) as e:
+                ap.error(f"${s.env}: {e}")
+        elif s.required:
+            missing.append(s.flag + (f" (or ${s.env})" if s.env else ""))
+    if missing:
+        ap.error(f"{stack}: the following arguments are required: {', '.join(missing)}")
+    try:
+        return cls(**values)
+    except ValueError as e:
+        ap.error(f"{stack}: {e}")
+
+
+def _takes_argument(build: Callable[..., Any]) -> bool:
+    try:
+        params = inspect.signature(build).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD, p.VAR_POSITIONAL) for p in params)
+
+
+def _with_settings(chosen: Mapping[str, StackSpec], shared: type | None, args: argparse.Namespace, ap: argparse.ArgumentParser) -> dict[str, StackSpec]:
+    """Each stack's builder with its settings instance filled in. A builder that takes no argument is left alone when it only has the shared settings."""
+    out: dict[str, StackSpec] = {}
+    for name, spec in chosen.items():
+        cls = spec.settings or (shared if _takes_argument(spec.build) else None)
+        if cls is None:
+            out[name] = spec
+        else:
+            out[name] = dataclasses.replace(spec, build=functools.partial(spec.build, _instance(cls, args, ap, name)))
+    return out
+
+
 def main(
     stacks: Builder | StackSpec | Mapping[str, Builder | StackSpec] | None = None,
     *,
     schemas: ModuleType | None = None,
     rules: Sequence[Rule] = (),
+    settings: type | None = None,
     argv: Sequence[str] | None = None,
     prog: str | None = None,
 ) -> int:
-    """Run the command line for `stacks` and return the exit status (0 ok, 1 problems or differences, 2 bad usage; `--help` and argument errors still exit by themselves, as argparse does). `schemas` is the package `cfn-typegen` generated: it enables the checks against the registry schemas (values, `GetAtt` names, property combinations), which are left out without it. `rules` are the company's own checks. Both are for `check` (see `find_all_problems`). Without `stacks` the arguments are template files (the `cfn-typed` command)."""
+    """Run the command line for `stacks` and return the exit status (0 ok, 1 problems or differences, 2 bad usage; `--help` and argument errors still exit by themselves, as argparse does). `schemas` is the package `cfn-typegen` generated: it enables the checks against the registry schemas (values, `GetAtt` names, property combinations), which are left out without it. `rules` are the company's own checks. Both are for `check` (see `find_all_problems`). `settings` is a dataclass whose fields become flags on `emit`, `check`, `diff` and `ls` (`--stage prod`): each builder that takes an argument is called with an instance, and a field with no default is required. A `StackSpec(build, settings=Other)` uses `Other` for that stack instead; a flag is only required by the stacks you select. Without `stacks` the arguments are template files (the `cfn-typed` command)."""
     standalone = stacks is None
+    if standalone and settings is not None:
+        raise TypeError("settings go with stacks: template files take no settings")
     named: Mapping[str, StackSpec] = {} if stacks is None else _specs(stacks)
+    flags = _all_settings(named, settings)
 
     ap = argparse.ArgumentParser(prog=prog, description="Render and check CloudFormation templates.")
     sub = ap.add_subparsers(dest="command", required=True)
@@ -319,12 +485,14 @@ def main(
     p.add_argument("stack", nargs="*", help=stack_help)
     p.add_argument("-f", "--format", choices=list(_FORMATS), help="default: from the -o suffix, else yaml")
     p.add_argument("-o", "--out", type=Path, help="a file (one stack), a directory (writes NAME.yaml for each; overrides a StackSpec's out) or - for standard output")
+    _add_flags(p, flags)
 
     p = sub.add_parser("check", help="run every check; exit status 1 when one finds a problem")
     p.add_argument("stack", nargs="*", help=stack_help)
     p.add_argument("--inline", action="store_true", help="templates are sent inline, so the 51,200-byte limit applies")
     p.add_argument("--no-unused", action="store_true", help="skip the unused parameter/condition/mapping check")
     p.add_argument("--no-defaults", action="store_true", help="do not check parameter defaults")
+    _add_flags(p, flags)
     if standalone:
         p.add_argument("--schemas", metavar="MODULE", help="a package generated by cfn-typegen, to check against the registry schemas")
 
@@ -332,11 +500,13 @@ def main(
     p.add_argument("stack", nargs="*", help=stack_help)
     p.add_argument("-l", "--long", action="store_true", help="show full type names, not aliases")
     p.add_argument("-t", "--type", help="only these types: an alias (queue, lambda, role, ...), a glob such as 'AWS::SQS::*', or the last part of a type name")
+    _add_flags(p, flags)
 
     p = sub.add_parser("diff", help="compare the rendered templates with the committed files")
     p.add_argument("args", nargs="*", metavar="[DIR] [STACK]", help="directory that holds NAME.yaml for each stack (omit it to use each StackSpec's out), then stack names; if the first word is a stack name, there is no directory")
     p.add_argument("-f", "--format", choices=list(_FORMATS), default="yaml")
     p.add_argument("--update", action="store_true", help="rewrite the files instead of failing")
+    _add_flags(p, flags)
 
     if standalone:
         p = sub.add_parser("import", help="write a template file as typed Python (types from `cfn-typegen --template FILE`)")
@@ -369,7 +539,7 @@ def main(
             sys.path.insert(0, ".")
             schemas = importlib.import_module(args.schemas)
     else:
-        chosen = _select(named, args.stack, ap)
+        chosen = _with_settings(_select(named, args.stack, ap), settings, args, ap)
     match args.command:
         case "emit":
             return _emit(args, chosen)

@@ -193,3 +193,128 @@ def test_diff_without_any_directory_is_an_error(capsys) -> None:
 def test_stackspec_ls_shows_the_directory(tmp_path, capsys) -> None:
     assert run({"a": StackSpec(good, out=tmp_path)}, "ls") == 0
     assert f"-> {tmp_path}" in capsys.readouterr().out
+
+
+# --- settings: a dataclass whose fields are flags ---
+
+import enum
+from dataclasses import dataclass, field
+from typing import Literal
+
+
+class Tier(enum.Enum):
+    small = 1
+    large = 2
+
+
+@dataclass
+class Settings:
+    stage: str = "dev"
+    memory: int = 1024
+    debug: bool = False
+    tier: Tier = Tier.small
+    region: Literal["eu-west-1", "us-east-1"] = "eu-west-1"
+    tags: list[str] = field(default_factory=list)
+
+
+def queue_named(s: Settings) -> dict:
+    return {"Resources": {"Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": f"{s.stage}-{s.memory}-{s.debug}-{s.tier.name}-{s.region}-{','.join(s.tags)}"}}}}
+
+
+def test_settings_flags_reach_the_builder(capsys) -> None:
+    assert main(queue_named, settings=Settings, argv=["emit", "--stage", "prod", "--memory", "2048", "--debug", "--tier", "large", "--tags", "a", "--tags", "b"]) == 0
+    assert "prod-2048-True-large-eu-west-1-a,b" in capsys.readouterr().out
+
+
+def test_settings_defaults_apply(capsys) -> None:
+    assert main(queue_named, settings=Settings, argv=["emit"]) == 0
+    assert "dev-1024-False-small-eu-west-1-" in capsys.readouterr().out
+
+
+def test_settings_bad_values_are_usage_errors(capsys) -> None:
+    for argv in (["emit", "--memory", "lots"], ["emit", "--tier", "huge"], ["emit", "--region", "mars"]):
+        with pytest.raises(SystemExit) as e:
+            main(queue_named, settings=Settings, argv=argv)
+        assert e.value.code == 2
+
+
+def test_builder_without_an_argument_still_works(capsys) -> None:
+    assert main({"a": good, "b": queue_named}, settings=Settings, argv=["check", "--stage", "x"]) == 0
+
+
+@dataclass
+class Needs:
+    stage: str = field(metadata={"env": "TEST_STAGE", "help": "which stage"})
+
+
+def needs(s: Needs) -> dict:
+    return {"Resources": {"Q": {"Type": "AWS::SQS::Queue", "Properties": {"QueueName": s.stage}}}}
+
+
+def test_a_field_without_a_default_is_required(capsys, monkeypatch) -> None:
+    monkeypatch.delenv("TEST_STAGE", raising=False)
+    with pytest.raises(SystemExit) as e:
+        main(needs, settings=Needs, argv=["emit"])
+    assert e.value.code == 2
+    assert "--stage" in capsys.readouterr().err
+
+
+def test_required_field_can_come_from_the_environment(capsys, monkeypatch) -> None:
+    monkeypatch.setenv("TEST_STAGE", "from-env")
+    assert main(needs, settings=Needs, argv=["emit"]) == 0
+    assert "from-env" in capsys.readouterr().out
+    assert main(needs, settings=Needs, argv=["emit", "--stage", "flag"]) == 0
+    assert "flag" in capsys.readouterr().out
+
+
+def test_stackspec_settings_override_and_only_selected_stacks_need_them(capsys, monkeypatch) -> None:
+    monkeypatch.delenv("TEST_STAGE", raising=False)
+    stacks = {"a": queue_named, "b": StackSpec(needs, settings=Needs)}
+    assert main(stacks, settings=Settings, argv=["emit", "a"]) == 0        # b's required --stage is not asked for
+    with pytest.raises(SystemExit):
+        main(stacks, settings=Settings, argv=["emit", "b"])
+    assert main(stacks, settings=Settings, argv=["emit", "b", "--stage", "s"]) == 0
+    assert "QueueName: s" in capsys.readouterr().out
+
+
+def test_validation_in_post_init_is_a_usage_error(capsys) -> None:
+    @dataclass
+    class Checked:
+        stage: str = "dev"
+
+        def __post_init__(self) -> None:
+            if self.stage == "prod":
+                raise ValueError("prod needs a ticket")
+
+    with pytest.raises(SystemExit) as e:
+        main(StackSpec(lambda s: good(), settings=Checked), argv=["emit", "--stage", "prod"])
+    assert e.value.code == 2
+    assert "prod needs a ticket" in capsys.readouterr().err
+
+
+def test_conflicting_declarations_and_clashing_names_are_rejected() -> None:
+    @dataclass
+    class A:
+        stage: str = "dev"
+
+    @dataclass
+    class B:
+        stage: int = 1
+
+    @dataclass
+    class Clash:
+        format: str = "x"
+
+    with pytest.raises(TypeError, match="different type"):
+        main({"a": StackSpec(lambda s: good(), settings=A), "b": StackSpec(lambda s: good(), settings=B)}, argv=["ls"])
+    with pytest.raises(TypeError, match="already an option"):
+        main(StackSpec(lambda s: good(), settings=Clash), argv=["emit"])
+    with pytest.raises(TypeError, match="template files"):
+        main(settings=A, argv=["ls", "x.json"])
+
+
+def test_settings_with_diff(tmp_path, capsys) -> None:
+    assert main({"q": queue_named}, settings=Settings, argv=["diff", str(tmp_path), "--update", "--stage", "p"]) == 0
+    assert "p-1024" in (tmp_path / "q.yaml").read_text()
+    assert main({"q": queue_named}, settings=Settings, argv=["diff", str(tmp_path), "--stage", "p"]) == 0
+    assert main({"q": queue_named}, settings=Settings, argv=["diff", str(tmp_path)]) == 1

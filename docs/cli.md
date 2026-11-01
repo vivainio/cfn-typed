@@ -130,6 +130,68 @@ $ python main.py emit -o /tmp/all        # an explicit directory overrides every
   same name as a stack, write it as `./bucket-logs`.
 - `ls` shows each stack's `out` after its name.
 
+## Settings: a dataclass whose fields are flags
+
+A builder often needs a value that is not in the code: the stage, the region, a size. Give `main` a dataclass and its
+fields become flags on `emit`, `check`, `diff` and `ls`. Each builder that takes an argument is called with an instance:
+
+```python
+from dataclasses import dataclass, field
+from typing import Literal
+
+
+@dataclass
+class Settings:
+    stage: str = field(metadata={"help": "which environment", "env": "STAGE"})   # no default: required
+    memory: int = 1024
+    debug: bool = False                                      # --debug / --no-debug
+    region: Literal["eu-west-1", "us-east-1"] = "eu-west-1"
+
+
+def orders(s: Settings) -> cfn.Template: ...
+
+
+cli.main({"orders": orders, "billing": billing}, settings=Settings)
+```
+
+```text
+$ python stacks.py emit orders --stage prod --memory 2048
+$ STAGE=prod python stacks.py check
+$ python stacks.py emit --help          # the flags, with their help and defaults
+```
+
+- A field with no default is required: the flag, or the environment variable named in `metadata={"env": ...}`. `X | None`
+  is not optional by itself, write `X | None = None`.
+- The types are `str`, `int`, `float`, `bool` (a `--flag/--no-flag` pair), `Path`, an `Enum` (by member name), a
+  `Literal`, a `list` of those (repeat the flag, or comma-separated in the environment variable), and `X | None`.
+  Another type is an error when `main` starts.
+- A value that does not convert, an unknown choice, or a `ValueError` from your `__post_init__` is a usage error
+  (exit status 2) with the message, so the dataclass is where to reject a combination such as `stage="prod"` with `debug`.
+- A builder that takes no argument is called as before, so plain builders and builders with settings can share one
+  mapping.
+- A field cannot be named like an option of the command (`format`, `out`, `type`, `long`, `update`, `inline`, ...).
+  That is an error when `main` starts, and the fix is a different name.
+- With `diff`, pass the same flags you rendered the committed files with, or it reports the difference. If the
+  committed files should not depend on a flag, give the field a default that matches them.
+
+### Settings for one stack
+
+`StackSpec(build, settings=Other)` uses `Other` for that stack, in place of the one given to `main`. A flag is only
+required by the stacks you select, so a stack that needs `--stage` does not stop `emit billing` from running:
+
+```python
+cli.main(
+    {
+        "orders": orders,                                          # Settings
+        "reports": StackSpec(reports, settings=ReportSettings),    # its own flags
+    },
+    settings=Settings,
+)
+```
+
+All the flags are on the command, whichever stack uses them, and a name that two classes both declare has to have the
+same type in both. A stack with its own `settings` does not get the shared ones.
+
 ## `import`: start from an existing template
 
 ```text

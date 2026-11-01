@@ -1,8 +1,18 @@
-# Uploading code: `aws cloudformation package`
+# Uploading code and releasing
 
 SAM and the Serverless Framework both zip your code and upload it to S3 as part of deploying. cfn-typed does not.
 `emit` renders a template and nothing else: no network, no credentials, no build. So if you are coming from
 SAM or Serverless, the question is where the upload went.
+
+A function's code has to reach CloudFormation one of three ways, and this page covers each:
+
+- **`aws cloudformation package`** uploads local files and rewrites the template ([below](#one-way-aws-cloudformation-package)).
+- **You upload it yourself** and the template names the bucket and key ([`code.s3`](#where-the-code-is)). This is the
+  better fit for a build you deploy to several regions, and it is what the example [release flow](#an-example-release-flow-for-plain-cloudformation)
+  at the end of the page uses.
+- **The source is in the template** ([`code.inline`](#where-the-code-is)), for small functions.
+
+## One way: `aws cloudformation package`
 
 It is a step of its own in the AWS CLI, and it runs after you render and before you deploy:
 
@@ -143,7 +153,10 @@ The three commands are three steps, and each can run alone:
 A pull request can run the first one. The pipeline that deploys runs all three, and you can look at
 `packaged/worker.yaml` before the last one if you want to see what is about to go out.
 
-## A release flow for plain CloudFormation
+## An example release flow for plain CloudFormation
+
+This is one example of a flow, to show the parts and how they fit. Your build system, buckets and naming will differ,
+and that is fine: what matters is that each part is a step you can see and change.
 
 If you are moving off SAM or the Serverless Framework, `sam deploy` and `sls deploy` did four things at once: build,
 upload, render and deploy. Plain CloudFormation has them as separate steps, which is more to write once and easier to
@@ -161,8 +174,13 @@ control, and the template holds the bucket and a parameter for the key.
 **Build, once per commit**
 
 1. Build each zip (`worker.zip`, `api.zip`, ...).
-2. Choose a key for each from the build, such as `worker/<git-sha>.zip` and `api/<git-sha>.zip`.
-3. Keep the zips, and the keys, as the build artifact.
+2. Upload each to the build bucket under a key from the build, such as `worker/$SHA.zip`.
+
+```text
+for pkg in worker api; do
+  aws s3 cp dist/$pkg.zip s3://build-artifacts/$pkg/$SHA.zip
+done
+```
 
 **The template: one key parameter for each package**
 
@@ -178,13 +196,13 @@ function("Api", code=code.s3(bucket, api_key), handler="api.handler", runtime="p
 
 **Deploy, for each stage and region**
 
-1. Copy each zip from the build artifact into that region's bucket, under its key.
+1. Copy each zip from the build bucket into that region's bucket, under the same key.
 2. Check that each is there.
 3. Deploy the committed template with the keys as parameters.
 
 ```text
 for pkg in worker api; do
-  aws s3 cp dist/$pkg.zip s3://deploy-artifacts-$REGION/$pkg/$SHA.zip --region $REGION
+  aws s3 cp s3://build-artifacts/$pkg/$SHA.zip s3://deploy-artifacts-$REGION/$pkg/$SHA.zip --source-region $BUILD_REGION --region $REGION
   aws s3api head-object --bucket deploy-artifacts-$REGION --key $pkg/$SHA.zip --region $REGION
 done
 aws cloudformation deploy --region $REGION --template-file rendered/app.yaml --stack-name app-$STAGE \
@@ -192,25 +210,76 @@ aws cloudformation deploy --region $REGION --template-file rendered/app.yaml --s
     --capabilities CAPABILITY_IAM
 ```
 
-If the build artifacts are in S3 as well, `aws s3 cp s3://build-bucket/key s3://deploy-artifacts-$REGION/key` copies
-between buckets without downloading (for another region it needs `--source-region`).
+**The deploy job never downloads a package.** `aws s3 cp` between two buckets is a copy inside S3, so the zips do not pass
+through the pipeline runner, and the only things it handles are keys. This is the way I recommend, because the deploy
+job decides what goes where and the build only needs write access to its own bucket. There are two other ways to get the
+zip into each region:
+
+- **Upload to every region from the build.** The last build step pushes each zip to all the regional buckets, and the deploy
+  job only checks and deploys. Deploys are faster, but the build needs write access to every regional bucket.
+- **S3 replication.** The build uploads once and replication rules copy to the regional buckets. Replication is
+  asynchronous, so the check before `deploy` has to retry until the object appears.
 
 Why it is arranged this way:
 
 - **The template does not change per release.** It is rendered and committed, and what changes is the parameters.
-  Each package has its own key, so a release that changes only the worker updates only the worker: the other keys
-  are the same, so those functions are not touched.
-- **The key is the identity of the build.** The same keys in every regional bucket mean the template needs no
-  per-region edits.
+- **The same keys in every regional bucket** mean the template needs no per-region edits.
 - **The record of a release is the stack's parameters, not a diff.** The keys are not in `rendered/`, so log them in CI
   or tag the stack with the SHA.
 - **The copy is the only step that writes to the deploy bucket.** Give the deploying role write access to its regional bucket
-  and nothing else, and read access on the build artifact.
+  and nothing else, and read access on the build bucket.
 - **Keep the old builds** in each regional bucket for [rollback](#keep-the-uploaded-code-after-you-deploy). Rollback
   restores the previous parameter values with the previous template, so each previous key must still exist.
 - **Do not read the keys from SSM with a dynamic reference.** I believe CloudFormation does not see a changed
   resolved value when the template and parameters are the same, so the functions would not update. Pass the keys
   as parameters.
+
+### A variation: key the deploy bucket by content
+
+In the example, every release gives every package a new key (it has the commit in it), so every function updates on
+every release, even one whose code did not change. If that matters to you, the build bucket can stay keyed by release
+(it is how you find what a build produced) and the deploy bucket can be keyed by the content of the zip instead. A
+package whose bytes did not change then keeps its key, and CloudFormation does not touch that function.
+
+The build computes a hash for each package, however you like, and stores it where the deployment can read it. The hash
+does not have to be of the zip's bytes, only a value that changes when the code changes. The simplest place to put it is
+on the zip itself, as custom S3 metadata, so there is no second file to keep in step:
+
+```text
+# build
+for pkg in worker api; do
+  hash=$(sha256sum dist/$pkg.zip | cut -c1-16)              # or hash the sources and lockfile; shasum -a 256 on macOS
+  aws s3 cp dist/$pkg.zip s3://build-artifacts/$pkg/$SHA.zip --metadata hash=$hash
+done
+
+# deploy
+for pkg in worker api; do
+  hash=$(aws s3api head-object --bucket build-artifacts --key $pkg/$SHA.zip --query Metadata.hash --output text)
+  aws s3 cp s3://build-artifacts/$pkg/$SHA.zip s3://deploy-artifacts-$REGION/$pkg/$hash.zip --source-region $BUILD_REGION --region $REGION
+  eval "$pkg=$hash"
+done
+aws cloudformation deploy ... --parameter-overrides WorkerCodeKey=worker/$worker.zip ApiCodeKey=api/$api.zip ...
+```
+
+`head-object` returns the metadata without downloading the zip. Metadata is set when the object is uploaded and cannot
+be changed afterwards without copying the object over itself, its names are lowercase, and it is limited to about 2 KB, which
+a hash fits easily. A manifest file, a tag, or a row in a database all work as well: the deployment only sees the stored
+value, so it does not matter where it lives.
+
+Things that change with it:
+
+- **The zip does not need to be reproducible.** If you hash the zip's bytes, a rebuild with timestamps in it gets a new
+  hash and one extra update, which is harmless. If you want to avoid that, hash the inputs instead: the source files
+  and the lockfile, say. The deployment only sees the stored value, so it does not matter how it was made.
+- **The hash must cover everything that goes into the zip.** A hash that misses an input (an unpinned dependency, a
+  generated file) stays the same when the code does not, and the function is not updated. That is the one way this
+  variation fails quietly.
+- **A key no longer says which commit it came from.** Log the keys or tag the stack with the SHA. The build bucket's
+  object for that commit holds the hash, so it is the link back.
+- **Age-based lifecycle rules need care.** An unchanged package stays in use for many releases, so a rule can expire an
+  object a running stack still points at. If the copy runs on every deploy and does not skip an existing object, it
+  makes the object new again, so the age counts from the last deploy that used it. (This relies on S3 giving a copied
+  object a fresh modification time, which I believe is right but have not verified.)
 
 If the code is small enough to [inline](#where-the-code-is), none of this is needed: the code is in the template, and
 the template is the whole release.

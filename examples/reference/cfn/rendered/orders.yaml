@@ -1,0 +1,31 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - test
+      - prod
+Resources:
+  JobsDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      Tags:
+        - Key: Stage
+          Value: !Ref Stage
+  JobsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 180
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt JobsDLQ.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: Stage
+          Value: !Ref Stage
+Outputs:
+  JobsUrl:
+    Value: !Ref JobsQueue
+  JobsDlqUrl:
+    Value: !Ref JobsDLQ

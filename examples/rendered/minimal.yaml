@@ -1,4 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - test
+      - prod
 Resources:
   Jobs:
     Type: AWS::SQS::Queue
@@ -6,7 +14,7 @@ Resources:
       VisibilityTimeout: 60
       Tags:
         - Key: Stage
-          Value: prod
+          Value: !Ref Stage
 Outputs:
   JobsUrl:
     Value: !Ref Jobs

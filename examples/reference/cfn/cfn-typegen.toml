@@ -1,0 +1,4 @@
+# The resource types the stacks and patterns use. `cfn-typegen --config cfn-typegen.toml` writes cfn_types/ next to it.
+out = "cfn_types"
+docs = false
+types = ["AWS::SQS::Queue", "AWS::S3::Bucket"]

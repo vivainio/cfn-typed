@@ -1,7 +1,7 @@
 """Golden-file checks: commit the rendered template, and fail when the code renders something else.
 
     def test_orders_stack() -> None:
-        assert_matches_file(build("prod"), Path("rendered/orders-prod.yaml"))
+        assert_matches_file(build(), Path("rendered/orders.yaml"))
 
 A template change then shows up as a line diff in the pull request, and CI fails if the
 committed file and the code disagree. To accept an intended change, rerun the tests with

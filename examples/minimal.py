@@ -2,27 +2,30 @@
 
 # --8<-- [start:main]
 import json
-import sys
+from dataclasses import dataclass
 
 import cfn_typed as cfn
 from cfn_types import sqs
 
 
-def build(stage: str) -> cfn.Template:
+@dataclass(frozen=True)
+class JobsConfig:
+    visibility_timeout: int = 60
+
+
+def build(config: JobsConfig = JobsConfig()) -> cfn.Template:
+    params = cfn.Params()
+    stage = params.string("Stage", default="dev", allowed_values=["dev", "test", "prod"])
     return {
         "AWSTemplateFormatVersion": "2010-09-09",
+        "Parameters": params.declarations(),
         "Resources": {
-            "Jobs": sqs.queue(VisibilityTimeout=60, Tags=cfn.tags(Stage=stage)),
+            "Jobs": sqs.queue(VisibilityTimeout=config.visibility_timeout, Tags=[{"Key": "Stage", "Value": stage}]),
         },
         "Outputs": {"JobsUrl": {"Value": cfn.ref("Jobs")}},
     }
 
 
-def main() -> None:
-    stage = sys.argv[1] if len(sys.argv) > 1 else "dev"
-    print(json.dumps(build(stage), indent=2))
-
-
 if __name__ == "__main__":
-    main()
+    print(json.dumps(build(), indent=2))
 # --8<-- [end:main]

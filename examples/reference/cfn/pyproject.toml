@@ -1,0 +1,25 @@
+[project]
+name = "reference-cfn"
+version = "0"
+requires-python = ">=3.14"
+# --8<-- [start:deps]
+dependencies = ["cfn-typed[yaml]"]
+
+[dependency-groups]
+dev = ["pytest", "ty"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+# --8<-- [end:deps]
+
+# In this repository the reference project uses the checkout; in your own project this section does not exist.
+[tool.uv.sources]
+cfn-typed = { path = "../../..", editable = true }
+
+# ty would otherwise read this repository's own configuration, which sits further up.
+[tool.ty.environment]
+python-version = "3.14"
+root = ["."]
+
+[tool.ty.src]
+include = ["main.py", "patterns", "stacks", "tests"]

@@ -4,6 +4,7 @@ __pycache__/
 site/
 .cache/
 examples/cfn_types/
+examples/reference/cfn/cfn_types/
 docs/reference/
 uv.lock
 dist/

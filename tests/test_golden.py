@@ -3,7 +3,6 @@
 Intended change? Regenerate and review the diff:  CFN_TYPED_UPDATE=1 uv run pytest tests/test_golden.py
 """
 
-import runpy
 import sys
 from pathlib import Path
 from typing import Any
@@ -19,6 +18,7 @@ import integrations_stack  # noqa: E402
 import intrinsics_demo  # noqa: E402
 import minimal  # noqa: E402
 import serverless  # noqa: E402
+import sqs_worker  # noqa: E402
 import web_stack  # noqa: E402
 
 from cfn_typed.testing import assert_constraints_hold, assert_matches_file, assert_references_resolve, assert_template_ok  # noqa: E402
@@ -30,18 +30,16 @@ def check(template: Any, name: str) -> None:
     assert_matches_file(template, RENDERED / name)
 
 
-def test_minimal_prod() -> None:
-    check(minimal.build("prod"), "minimal-prod.yaml")
+def test_minimal() -> None:
+    check(minimal.build(), "minimal.yaml")
 
 
 def test_web_stack() -> None:
     check(web_stack.build(), "web-stack.yaml")
 
 
-def test_sqs_worker_prod() -> None:
-    sys.argv = ["sqs_worker.py", "prod"]
-    template: Any = runpy.run_path(str(EXAMPLES / "sqs_worker.py"))["template"]
-    check(template, "sqs-worker-prod.yaml")
+def test_sqs_worker() -> None:
+    check(sqs_worker.build(), "sqs-worker.yaml")
 
 
 def test_data_platform() -> None:

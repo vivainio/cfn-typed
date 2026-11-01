@@ -1,4 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - test
+      - prod
 Resources:
   ExecutionRole:
     Type: AWS::IAM::Role
@@ -12,7 +20,7 @@ Resources:
             Action:
               - sts:AssumeRole
       Policies:
-        - PolicyName: order-processor-prod-lambda
+        - PolicyName: order-processor-lambda
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -22,7 +30,7 @@ Resources:
                   - logs:CreateLogGroup
                   - logs:PutLogEvents
                 Resource:
-                  - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/order-processor-prod*:*
+                  - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/order-processor*:*
               - Effect: Allow
                 Action:
                   - sqs:ReceiveMessage
@@ -40,29 +48,29 @@ Resources:
                   - dynamodb:DeleteItem
                   - dynamodb:DescribeTable
                 Resource:
-                  - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/orders-prod
+                  - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/orders-${Stage}
   Processor:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: order-processor-prod-processor
+      FunctionName: !Sub order-processor-${Stage}-processor
       Handler: src/processor.handler
       Runtime: nodejs20.x
       Role: !GetAtt ExecutionRole.Arn
       Code:
         S3Bucket: deploy-artifacts
-        S3Key: order-processor/prod/package.zip
+        S3Key: !Sub order-processor/${Stage}/package.zip
       MemorySize: 256
       Timeout: 30
       Environment:
         Variables:
-          STAGE: prod
-          TABLE_NAME: orders-prod
+          STAGE: !Ref Stage
+          TABLE_NAME: !Sub orders-${Stage}
       ReservedConcurrentExecutions: 5
       Tags:
         - Key: Service
           Value: order-processor
         - Key: Stage
-          Value: prod
+          Value: !Ref Stage
   ProcessorEventSourceMapping:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
@@ -76,7 +84,7 @@ Resources:
         - Key: Service
           Value: order-processor
         - Key: Stage
-          Value: prod
+          Value: !Ref Stage
   OrderQueue:
     Type: AWS::SQS::Queue
     Properties:
@@ -88,7 +96,7 @@ Resources:
         - Key: Service
           Value: order-processor
         - Key: Stage
-          Value: prod
+          Value: !Ref Stage
 Outputs:
   QueueUrl:
     Value: !Ref OrderQueue

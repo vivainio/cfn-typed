@@ -22,20 +22,21 @@ def test_factories_return_plain_dicts() -> None:
 
 def test_example_renders_valid_json() -> None:
     out = subprocess.run(
-        [sys.executable, str(ROOT / "examples" / "sqs_worker.py"), "prod"],
+        [sys.executable, str(ROOT / "examples" / "sqs_worker.py")],
         check=True, capture_output=True, text=True,
     ).stdout
     resources = json.loads(out)["Resources"]
     assert set(resources) == {
         "ExecutionRole", "Processor", "ProcessorEventSourceMapping", "OrderDLQ", "OrderQueue",
     }
-    assert resources["Processor"]["Properties"]["FunctionName"] == "order-processor-prod-processor"
+    assert resources["Processor"]["Properties"]["FunctionName"] == {"Fn::Sub": "order-processor-${Stage}-processor"}
 
 
 def test_minimal_main_prints_a_template() -> None:
     out = subprocess.run(
-        [sys.executable, str(ROOT / "examples" / "minimal.py"), "prod"],
+        [sys.executable, str(ROOT / "examples" / "minimal.py")],
         check=True, capture_output=True, text=True,
     ).stdout
     template = json.loads(out)
-    assert template["Resources"]["Jobs"]["Properties"]["Tags"] == [{"Key": "Stage", "Value": "prod"}]
+    assert template["Parameters"]["Stage"]["Default"] == "dev"
+    assert template["Resources"]["Jobs"]["Properties"]["Tags"] == [{"Key": "Stage", "Value": {"Ref": "Stage"}}]

@@ -35,6 +35,7 @@ yaml = [
 
 [tool.uv.workspace]
 members = ["packages/*"]
+exclude = ["examples/reference"]  # a project of its own, synced and checked separately in CI
 
 [dependency-groups]
 dev = [
@@ -67,3 +68,4 @@ root = ["src", "packages/sumo/src", "examples", "examples/state_machine", "."]
 
 [tool.ty.src]
 include = ["src", "packages/sumo/src", "packages/sumo/tests", "examples", "tests"]
+exclude = ["examples/reference"]  # type-checked in its own environment, as a user would

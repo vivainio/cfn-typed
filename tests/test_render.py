@@ -38,9 +38,10 @@ def load(text: str) -> Any:
 
 
 def test_example_template_round_trips() -> None:
-    sys.argv = ["sqs_worker.py", "prod"]
     sys.path.insert(0, str(EXAMPLES))
-    template = runpy.run_path(str(EXAMPLES / "sqs_worker.py"))["template"]
+    import sqs_worker
+
+    template = sqs_worker.build()
     text = cfn.to_yaml(template)
     assert load(text) == template == json.loads(cfn.to_json(template))
     assert "!GetAtt OrderDLQ.Arn" in text and "!Ref OrderQueue" in text

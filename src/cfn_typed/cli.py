@@ -51,7 +51,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, Literal
 
 from cfn_typed.checks import Rule, find_all_problems
 from cfn_typed.testing import render_for
@@ -68,6 +68,11 @@ class StackSpec:
     still overrides it for every stack. `out` is used as given, so relative paths are relative to the current directory:
     build it from `Path(__file__)` to make it independent of where the script is run.
 
+    `format` ("json" or "yaml") and `indent` (as in `json.dumps`: a number of spaces or a string such as "\\t", JSON
+    only) say how this stack's template is written, for a repository that keeps some templates as JSON and others as YAML,
+    or whose JSON is indented with tabs. `format` is used when neither `-f` nor an `-o` file name says otherwise, and the
+    default is yaml.
+
     `settings` is a dataclass for this stack, in place of the one given to `main`: its fields are command line flags, and
     `build` is called with an instance. See `main`.
 
@@ -77,6 +82,8 @@ class StackSpec:
 
     build: Builder
     out: Path | str | None = None
+    format: Literal["json", "yaml"] | None = None
+    indent: int | str | None = 2
     settings: type | None = None
     stack_name: str | None = None
 
@@ -171,30 +178,34 @@ def _select(stacks: Mapping[str, StackSpec], names: Sequence[str], ap: argparse.
 def _emit(args: argparse.Namespace, chosen: Mapping[str, StackSpec]) -> int:
     out: Path | None = args.out
     to_stdout = out == Path("-")
-    fmt = args.format or (out.suffix.lstrip(".").replace("yml", "yaml") if out and out.suffix else "yaml")
-    if fmt not in _FORMATS:
+    fmt = args.format or (out.suffix.lstrip(".").replace("yml", "yaml") if out and out.suffix else None)
+    if fmt is not None and fmt not in _FORMATS:
         print(f"unknown format {fmt!r}, use json or yaml", file=sys.stderr)
         return 2
+
+    def ext(spec: StackSpec) -> str:
+        return _FORMATS[fmt or spec.format or "yaml"]
+
     if to_stdout or (out is None and not any(spec.out for spec in chosen.values()) and len(chosen) == 1):
         if len(chosen) > 1:
             print(f"name a stack to print ({', '.join(chosen)})", file=sys.stderr)
             return 2
         (spec,) = chosen.values()
-        sys.stdout.write(render_for(Path(f"x{_FORMATS[fmt]}"), spec.build()))
+        sys.stdout.write(render_for(Path(f"x{ext(spec)}"), spec.build(), spec.indent))
         return 0
     if out is None:
         missing = [name for name, spec in chosen.items() if spec.out is None]
         if missing:
             print(f"no output directory for {', '.join(missing)}: use -o DIR, or give the stack a StackSpec with out=", file=sys.stderr)
             return 2
-        targets = {Path(spec.out) / f"{name}{_FORMATS[fmt]}": spec.build for name, spec in chosen.items() if spec.out is not None}
+        targets = {Path(spec.out) / f"{name}{ext(spec)}": spec for name, spec in chosen.items() if spec.out is not None}
     elif len(chosen) == 1 and out.suffix:
-        targets = {out: next(iter(chosen.values())).build}
+        targets = {out: next(iter(chosen.values()))}
     else:
-        targets = {out / f"{name}{_FORMATS[fmt]}": spec.build for name, spec in chosen.items()}
-    for path, build in targets.items():
+        targets = {out / f"{name}{ext(spec)}": spec for name, spec in chosen.items()}
+    for path, spec in targets.items():
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(render_for(path, build()))
+        path.write_text(render_for(path, spec.build(), spec.indent))
         print(f"wrote {path}", file=sys.stderr)
     return 0
 
@@ -346,15 +357,14 @@ def _resources(args: argparse.Namespace, chosen: Mapping[str, StackSpec]) -> int
 
 
 def _diff(args: argparse.Namespace, chosen: Mapping[str, StackSpec]) -> int:
-    ext = _FORMATS[args.format]
     failed = 0
     for name, spec in chosen.items():
         directory = args.dir if args.dir is not None else spec.out_dir
         if directory is None:
             print(f"{name}: no directory: give one, or give the stack a StackSpec with out=", file=sys.stderr)
             return 2
-        path = directory / f"{name}{ext}"
-        actual = render_for(path, spec.build())
+        path = directory / f"{name}{_FORMATS[args.format or spec.format or 'yaml']}"
+        actual = render_for(path, spec.build(), spec.indent)
         expected = path.read_text() if path.exists() else None
         if expected == actual:
             print(f"{name}: matches {path}")
@@ -567,7 +577,7 @@ def main(
 
     p = sub.add_parser("emit", help="print a template, or write the templates to files")
     p.add_argument("stack", nargs="*", help=stack_help)
-    p.add_argument("-f", "--format", choices=list(_FORMATS), help="default: from the -o suffix, else yaml")
+    p.add_argument("-f", "--format", choices=list(_FORMATS), help="default: from the -o suffix, else each StackSpec's format, else yaml")
     p.add_argument("-o", "--out", type=Path, help="a file (one stack), a directory (writes NAME.yaml for each; overrides a StackSpec's out) or - for standard output")
     _add_flags(p, flags)
 
@@ -602,7 +612,7 @@ def main(
 
     p = sub.add_parser("diff", help="compare the rendered templates with the committed files")
     p.add_argument("args", nargs="*", metavar="[DIR] [STACK]", help="directory that holds NAME.yaml for each stack (omit it to use each StackSpec's out), then stack names; if the first word is a stack name, there is no directory")
-    p.add_argument("-f", "--format", choices=list(_FORMATS), default="yaml")
+    p.add_argument("-f", "--format", choices=list(_FORMATS), help="default: each StackSpec's format, else yaml")
     p.add_argument("--update", action="store_true", help="rewrite the files instead of failing")
     _add_flags(p, flags)
 

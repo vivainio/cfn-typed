@@ -179,6 +179,30 @@ def test_stackspec_diff_uses_each_stacks_directory(tmp_path, capsys) -> None:
     assert run(stacks, "diff", "a") == 0 and run(stacks, "diff", "b") == 1
 
 
+def test_stackspec_format_and_indent_decide_the_file(tmp_path) -> None:
+    stacks = {
+        "a": StackSpec(good, out=tmp_path, format="json", indent="\t"),
+        "b": StackSpec(good, out=tmp_path, format="yaml"),
+        "c": StackSpec(good, out=tmp_path),
+    }
+    assert run(stacks, "emit") == 0
+    assert (tmp_path / "a.json").read_text().startswith('{\n\t"') and (tmp_path / "a.json").read_text().endswith("}\n")
+    assert (tmp_path / "b.yaml").exists() and (tmp_path / "c.yaml").exists()
+    assert not (tmp_path / "a.yaml").exists() and not (tmp_path / "b.json").exists()
+    assert run(stacks, "diff") == 0
+    (tmp_path / "a.json").write_text("{}\n")
+    assert run(stacks, "diff", "a") == 1 and run(stacks, "diff", "b") == 0
+    assert run(stacks, "diff", "--update") == 0 and run(stacks, "diff") == 0
+
+
+def test_explicit_format_overrides_the_stackspec(tmp_path) -> None:
+    stacks = {"a": StackSpec(good, out=tmp_path, format="json", indent=None)}
+    assert run(stacks, "emit", "-f", "yaml") == 0
+    assert (tmp_path / "a.yaml").exists() and not (tmp_path / "a.json").exists()
+    assert run(stacks, "emit", "-f", "json") == 0
+    assert "\n" not in (tmp_path / "a.json").read_text().strip()      # indent=None: one line
+
+
 def test_stackspec_diff_explicit_directory_still_wins(tmp_path) -> None:
     stacks = {"a": StackSpec(good, out=tmp_path / "x")}
     assert run(stacks, "diff", str(tmp_path / "other"), "--update") == 0

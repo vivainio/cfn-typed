@@ -9,8 +9,8 @@
 !!! tip "Start here"
     Install both packages: `uv add cfn-typed cfn-typed-sumo`. `cfn-typed-sumo` has the Serverless helpers (`cfn_typed_sumo.sls`, and
     `cfn-typed import --sls`, which writes calls to them) and the generated types for about 440 resource types, so you can
-    pass `--types cfn_typed_sumo.types` to `import` and skip `cfn-typegen` for ordinary stacks. The checks (`plan`, `deployed`,
-    `adopt`, `code`, `zip`) are in `cfn-typed` itself. When the ejected services are running smoothly, you can
+    pass `--types cfn_typed_sumo.types` to `import` and skip `cfn-typegen` for ordinary stacks. The checks (`check --live`,
+    `zip`) are in `cfn-typed` itself. When the ejected services are running smoothly, you can
     [drop the sumo dependency](#dropping-the-sumo-dependency) by copying the helpers into your own package.
 
 The [Serverless Framework in a few lines](../patterns/serverless.md) page shows what a `functions:` entry becomes as patterns. This page
@@ -237,8 +237,8 @@ compare `wsgi_config` with the one in a package from a real `sls package` before
 
 The template names the code by an S3 key in the deployment bucket, and a plugin's custom resource (the `existing: true` S3 bucket
 one, for example) names its own zip there too. Keep those objects: if the key is gone, the next update of that function fails, and the
-change set does not tell you. `cfn-typed code STACK --bucket-name ServerlessDeploymentBucket=NAME` (or `assert_code_exists`) looks up every
-S3 key the template reads and lists the missing ones. Run it before the first deploy from the new code.
+change set does not tell you. `check --code --bucket-name ServerlessDeploymentBucket=NAME` (or `assert_code_exists`) looks up every
+S3 key the template reads and lists the missing ones. Run it before the first deploy from the new code ([advanced checks](#advanced-checks)).
 
 ## Then use the patterns
 
@@ -294,19 +294,11 @@ not for anything that holds data.
 
 ## Resources the framework made with API calls
 
-A plugin can create a resource that is not in the template at all. `serverless-domain-manager` makes the API's custom domain, its
-base path mapping and the Route 53 record with API calls when you run `sls create_domain` and `sls deploy`. The package then has no
-trace of them. Ejecting such a service means putting them in the template, and CloudFormation cannot create a domain that
-exists, so you import it:
-
-1. Add the resources (`apigateway.domain_name`, `apigateway.base_path_mapping`, ...) with `deletion_policy="Retain"` and properties that
-   describe what exists.
-2. `cfn-typed adopt STACK --id Domain.DomainName=api.example.com --id Mapping.DomainName=api.example.com --id Mapping.BasePath='(none)' --create`
-   checks the identifiers against the registry schemas (the type's `primaryIdentifier`) and makes an IMPORT change set, kept for you to read.
-3. Execute it. An import changes nothing else, so it is its own deploy, before any other change.
-
-Check that the type supports import in AWS's list before planning on it: not every type does. The same
-mechanism moves any resource that was made by hand or by another tool into a stack.
+A plugin can create a resource that is not in the template at all. `serverless-domain-manager` makes the API's custom domain and its
+base path mapping with API calls, and the package has no trace of them. Ejecting such a service means putting them in the template, and
+CloudFormation cannot create a domain that exists: it has to be imported (CloudFormation's resource import). `cfn_typed.adopt.resources_to_import`
+builds the list, checking each identifier against the registry schemas, and `cfn_typed.changes.plan(..., resources_to_import=...)`
+makes the IMPORT change set. It is rare (one service in a sample of fifty used the plugin), so there is no command for it.
 
 ## When the runtime is already dead
 
@@ -321,7 +313,7 @@ change, which is a Python or Node upgrade with its own testing. A runtime that i
 A template from Serverless 1 or 2 differs from a version 3 one in details, so do not assume the shapes above. Known: the role's log
 statement has no `logs:TagResource` (`iam_role(log_actions=[...])`). The rest you find by importing: `import --sls` claims what matches
 and leaves the rest as plain resources. A service with its own `stackName` deploys under that name: give the stack
-`StackSpec(build, stack_name="...")` so `plan` and `deployed` look at the right one.
+`StackSpec(build, stack_name="...")` so `check --plan` and `check --deployed` look at the right one.
 
 ## Try it on one real stack first
 
@@ -331,11 +323,10 @@ whole procedure on one real stack, which costs nothing because nothing is execut
 ```text
 $ aws cloudformation get-template --stack-name NAME --template-stage Processed > original.json
 $ cfn-typed import --sls original.json -o stack.py        # then the tests: build() == original.json
-$ python stacks.py deployed ledger --stack-name NAME --template-stage Processed   # the rendered template against the running stack
-$ python stacks.py plan ledger --stack-name NAME                                  # a change set, never executed: it should say no changes
+$ python stacks.py check ledger --deployed --plan --stack-name NAME --template-stage Processed   # rendered vs running; a change set, never executed, that should say no changes
 ```
 
-`deployed` says where the rendered template and the live one differ, and `plan` stops on a stateful resource that would be replaced. When both are clean, the
+`--deployed` says where the rendered template and the live one differ, and `--plan` stops on a stateful resource that would be replaced. When both are clean, the
 ejection is exact for that stack. Start with one of the S3-only stacks, and keep a copy of the real `original.json`, with the
 account IDs and names replaced, as the test fixture for the services like it.
 
@@ -385,6 +376,52 @@ module it writes needs only your copy of `sls.py`. A service you eject later, af
 You can also stop at any point: a service that works with sumo's helpers can keep them until you want to change one.
 [Start with sumo, then eject what you use](../sumo.md#recommended-start-with-sumo-then-eject-what-you-use) is the general version of this.
 
+## Advanced checks
+
+An empty change set only proves that CloudFormation sees no change. These checks ask what it cannot see: the live template, what a
+deploy would destroy, and the code behind the template. They are opt-in because they call AWS; plain `check` stays offline.
+Use them in this order on each service, and stop at the first one that reports something.
+
+| Check | Asks | Finds |
+|---|---|---|
+| `check --deployed` | `aws cloudformation get-template` | where the template your code renders differs from the one the stack has, by path in the template. This is the live version of the test that compares `build()` with `original.json` |
+| `check --plan` | `aws cloudformation create-change-set`, then `describe-change-set`, then `delete-change-set` | a stateful resource (table, bucket, queue, key, distribution, log group, database) that a deploy would replace or remove. It prints the change set, and exits 1 on such a change. The change set is never executed |
+| `check --code` | `aws s3api head-object`, once per distinct object | a function or layer whose S3 zip is not there: the deployment bucket's cleaned-up keys, a plugin's custom resource zip |
+| `zip` | nothing: it reads a file | a package zip that lacks files (the wsgi trio, a handler that does not exist), and with `--invoke` a handler that fails when called once |
+| `check --retention` | nothing: it reads the template | a stateful resource with no `Retain` or `Snapshot` policy, which a later removal or replacement would destroy |
+
+`--live` is `--deployed --plan --code` together. The stack is named like the stack here, unless it has
+`StackSpec(build, stack_name="...")` or you pass `--stack-name` (a service that set its own `stackName`).
+
+```text
+$ python stacks.py check ledger --live --stack-name ledger-dev --bucket-name ServerlessDeploymentBucket=ledger-dev-serverlessdeploymentbucket-abc
+```
+
+**How they use AWS.** Each one runs the `aws` command line as a subprocess: there is no boto3 and cfn-typed never reads credentials. It
+uses whatever `aws` resolves (environment variables, a profile, SSO), and `--aws-profile` and `--aws-region` are passed on. A command that
+fails (no such stack, no permission) exits 2, which says the check could not run, not that the template is wrong. The permissions needed
+are `cloudformation:GetTemplate` for `--deployed`; `CreateChangeSet`, `DescribeChangeSet` and `DeleteChangeSet` for `--plan`; and
+`s3:GetObject` on the zips for `--code`.
+
+**What to know before running them.**
+
+- `--plan` is the only one that is not purely a read: it creates a change set and deletes it again. The stack is untouched. If the
+  process dies in between, a harmless change set is left behind (`--keep-change-set` leaves it on purpose, for you to read in CloudFormation). It sends
+  the template inline, so it must be under 51,200 bytes, and a stack that is in the middle of an update cannot have one.
+- `--code` treats any failure of `head-object` as a missing object, including a permission error, so a role that cannot read the
+  deployment bucket sees every zip as missing. A bucket that is a `Ref` needs its real name from `--bucket-name LOGICAL=NAME`; it is
+  reported and not guessed.
+- `--deployed` compares the whole template, including `Description` and `Metadata`. Take the original from the same stage you
+  rendered against (`--template-stage Processed` for a SAM stack, after the transforms have run), and expect differences for
+  anything the deploy script `sed`s into the package.
+- `zip --invoke` runs the code in the zip, in a fresh Python on your machine: use it on a package you built.
+- None of these has been run against a real stack by the people who wrote them: the tests use a stand-in for `aws`. The first run on a real
+  stack is the real test, so make it an S3-only one, as [below](#try-it-on-one-real-stack-first).
+
+The same checks are Python functions for your test suite (`find_deployed_differences`, `find_change_problems`, `find_missing_code`, `find_zip_problems`,
+`find_wsgi_problems` and `find_retention_problems`, and the `assert_*` forms in `cfn_typed.testing`). The command line is
+[`check --live` and `zip`](../cli.md#check-live-ask-aws-about-a-stack-that-is-already-deployed).
+
 ## Deploy to the same stack
 
 Use the stack name the framework used (`ledger-dev`, the service and the stage), and do not run `sls remove`: it
@@ -396,7 +433,7 @@ $ aws cloudformation deploy --stack-name ledger-dev --template-file ledger.yaml 
 $ aws cloudformation describe-change-set --stack-name ledger-dev --change-set-name <name from the output>
 ```
 
-`python stacks.py plan ledger` (the [command line](../cli.md#plan-what-a-deploy-would-do-before-it-does-it) of your stack script) does the same without leaving a change set behind, prints the changes and exits 1 when a
+`python stacks.py check --plan ledger` (the [command line](../cli.md#check-live-ask-aws-about-a-stack-that-is-already-deployed) of your stack script) does the same without leaving a change set behind, prints the changes and exits 1 when a
 table, bucket, queue, key, distribution or database would be replaced or removed.
 
 Read the change set before executing it. An empty one means the ejection is exact. A resource marked `Replacement` is

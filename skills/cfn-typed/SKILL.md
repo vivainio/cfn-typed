@@ -102,7 +102,7 @@ cfn-typed zip app.zip --wsgi --invoke event.json   # what is inside a package zi
 cfn-typed skill                                   # print this skill, and where its directory is
 ```
 
-To give your own program the same subcommands (`emit`, `check`, `diff`, `ls`, and for a deployed stack `plan`, `deployed`, `adopt`, `code`) for the stacks it builds, call
+To give your own program the same subcommands (`emit`, `check`, `diff`, `ls`; `check --live` also asks AWS about a deployed stack) for the stacks it builds, call
 `cfn_typed.cli.main({"orders": build}, schemas=cfn_types)` from its `main()`.
 
 **Test by rendering.** Commit the rendered YAML and have CI assert the code still renders exactly that:
@@ -120,7 +120,7 @@ factory calls for resources, `cfn.*` builders for intrinsics, logical IDs and va
 express (`Custom::*`, `CreationPolicy`, `UpdatePolicy`, property names that are not identifiers) stays a plain dict with a
 comment; the file header lists them. Generate the types first with `cfn-typegen --template`. Prove the result with
 `assert build() == json.load(open("template.json"))`, run `ty check`, and review a change set before any deploy:
-`stacks.py plan` makes one and exits 1 when a stateful resource would be replaced or removed, and `stacks.py deployed` compares
+`stacks.py check --plan` makes one and exits 1 when a stateful resource would be replaced or removed, and `check --deployed` compares
 the rendered template with the running stack's. For a Serverless Framework service use `import --sls` (and read the book's
 ejecting page): the empty change set does not see inside the zip, so check it with `cfn-typed zip` (a wsgi app needs
 `wsgi_handler.py`, `serverless_wsgi.py` and `.serverless-wsgi`, and its handler is `wsgi_handler.handler`).

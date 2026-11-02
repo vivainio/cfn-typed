@@ -138,47 +138,66 @@ def fake_aws(monkeypatch: pytest.MonkeyPatch):
     return install
 
 
-def test_plan_command_stops_on_a_stateful_replacement(fake_aws, capsys) -> None:
+def test_check_plan_stops_on_a_stateful_replacement(fake_aws, capsys) -> None:
     fake = fake_aws(Fake(DESCRIBED))
-    assert main({"site": StackSpec(build, stack_name="shop-site-dev")}, argv=["plan"], prog="x") == 1
+    assert main({"site": StackSpec(build, stack_name="shop-site-dev")}, argv=["check", "--plan"], prog="x") == 1
     out = capsys.readouterr().out
-    assert "site -> shop-site-dev: 6 change(s)" in out and "STOP: Dist" in out and "STOP: Bucket" in out
+    assert "site: 3 problem(s)" in out and "[plan] Dist" in out and "[plan] Bucket" in out and "changes to shop-site-dev:" in out
     assert "shop-site-dev" in fake.calls[0]
-    assert main({"site": build}, argv=["plan", "--stack-name", "other"], prog="x") == 1 and "other" in fake.calls[-1]
+    assert main({"site": build}, argv=["check", "--plan", "--stack-name", "other"], prog="x") == 1 and "other" in fake.calls[-1]
 
 
-def test_plan_command_passes_when_there_is_nothing_to_lose(fake_aws, capsys) -> None:
+def test_check_plan_passes_when_there_is_nothing_to_lose(fake_aws, capsys) -> None:
     fake_aws(Fake({"Status": "CREATE_COMPLETE", "Changes": [DESCRIBED["Changes"][0], DESCRIBED["Changes"][5]]}))
-    assert main({"site": build}, argv=["plan"], prog="x") == 0
-    assert "STOP" not in capsys.readouterr().out
+    assert main({"site": build}, argv=["check", "--plan"], prog="x") == 0
+    assert "site: ok" in capsys.readouterr().out
     fake_aws(Fake({"Status": "FAILED", "StatusReason": "No updates are to be performed."}))
-    assert main({"site": build}, argv=["plan"], prog="x") == 0 and "no changes" in capsys.readouterr().out
+    assert main({"site": build}, argv=["check", "--plan"], prog="x") == 0 and "no changes to site" in capsys.readouterr().out
 
 
-def test_deployed_command_lists_the_differences(fake_aws, capsys) -> None:
+def test_check_deployed_lists_the_differences(fake_aws, capsys) -> None:
     fake_aws(Fake({}, build()))
-    assert main({"site": build}, argv=["deployed"], prog="x") == 0 and "is the deployed one" in capsys.readouterr().out
+    assert main({"site": build}, argv=["check", "--deployed"], prog="x") == 0 and "site: ok" in capsys.readouterr().out
     fake_aws(Fake({}, {"Resources": {}}))
-    assert main({"site": build}, argv=["deployed"], prog="x") == 1 and "Resources.Dist: only in the rendered" in capsys.readouterr().out
+    assert main({"site": build}, argv=["check", "--deployed"], prog="x") == 1 and "[deployed] Resources.Dist: only in the rendered" in capsys.readouterr().out
+
+
+def test_an_aws_failure_is_not_a_template_problem(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    def broken(_args):
+        raise RuntimeError("aws cloudformation get-template failed: Stack does not exist")
+
+    monkeypatch.setattr(changes, "aws_runner", lambda **_: broken)
+    assert main({"site": build}, argv=["check", "--deployed"], prog="x") == 2
+    assert "Stack does not exist" in capsys.readouterr().err
+
+
+def test_without_a_live_flag_check_never_calls_aws(monkeypatch: pytest.MonkeyPatch) -> None:
+    def forbidden(**_: Any) -> None:
+        raise AssertionError("check called aws")
+
+    monkeypatch.setattr(changes, "aws_runner", forbidden)
+    assert main({"site": build}, argv=["check"], prog="x") == 0
+
+
+def test_live_runs_all_three(fake_aws, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    from cfn_typed import packaging
+
+    monkeypatch.setattr(packaging, "s3_object_exists", lambda b, k, **_: False)
+
+    def fns() -> dict[str, Any]:
+        return {"Resources": {"Dep": {"Type": "AWS::S3::Bucket", "Properties": {}}, "A": {"Type": "AWS::Lambda::Function", "Properties": {"Code": {"S3Bucket": {"Ref": "Dep"}, "S3Key": "a.zip"}}}}}
+
+    fake = fake_aws(Fake({"Status": "CREATE_COMPLETE", "Changes": []}, fns()))
+    assert main({"x": fns}, argv=["check", "--live", "--bucket-name", "Dep=real"], prog="x") == 1
+    out = capsys.readouterr().out
+    assert "[code] Resources.A.Properties.Code: s3://real/a.zip does not exist" in out and "[deployed]" not in out and "[plan]" not in out
+    assert {"get-template", "create-change-set"} <= {c[1] for c in fake.calls}
 
 
 def test_check_can_require_retention(capsys) -> None:
     assert main({"site": build}, argv=["check", "--no-unused"], prog="x") == 0
     assert main({"site": build}, argv=["check", "--retention"], prog="x") == 1
     assert "[find_retention_problems]" in capsys.readouterr().out
-
-
-def test_code_command_reports_missing_objects(monkeypatch, capsys) -> None:
-    from cfn_typed import packaging
-
-    monkeypatch.setattr(packaging, "s3_object_exists", lambda b, k, **_: b == "real")
-
-    def fns() -> dict[str, Any]:
-        return {"Resources": {"A": {"Type": "AWS::Lambda::Function", "Properties": {"Code": {"S3Bucket": {"Ref": "Dep"}, "S3Key": "a.zip"}}}}}
-
-    assert main({"x": fns}, argv=["code", "--bucket-name", "Dep=real"], prog="x") == 0
-    assert main({"x": fns}, argv=["code", "--bucket-name", "Dep=other"], prog="x") == 1
-    assert "s3://other/a.zip does not exist" in capsys.readouterr().out
 
 
 def test_zip_command(tmp_path: Path, capsys) -> None:

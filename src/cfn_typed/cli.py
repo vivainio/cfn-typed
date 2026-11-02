@@ -17,10 +17,7 @@
     $ python stacks.py check                        # every check; exit status 1 when anything is found
     $ python stacks.py ls --type 'AWS::SQS::*'  # logical id, type and name of each resource
     $ python stacks.py diff rendered/               # compare with the committed files; --update rewrites them
-    $ python stacks.py plan orders                  # a change set against the running stack, never executed; exit status 1 when a table, bucket, key... would be replaced or removed
-    $ python stacks.py deployed orders              # the rendered template against the running stack's own
-    $ python stacks.py adopt orders --id Domain.DomainName=api.example.com --create   # import a resource that exists outside the stack
-    $ python stacks.py code orders --bucket-name ServerlessDeploymentBucket=NAME   # every S3 object the functions read exists
+    $ python stacks.py check --live orders          # also ask AWS: rendered vs running template, a change set that would replace a table or bucket, missing S3 code
     $ python stacks.py zip build/app.zip --wsgi     # what is inside a package zip (the Serverless WSGI files, a handler that exists)
 
 It also works with no Python code at all: give it template files (JSON, or YAML with short-form intrinsics) and use `cfn-typed`
@@ -75,7 +72,7 @@ class StackSpec:
     `build` is called with an instance. See `main`.
 
     `stack_name` is the name of the deployed CloudFormation stack when it is not the name this stack has here (a service
-    that set its own `stackName`). `plan` and `deployed` use it.
+    that set its own `stackName`). `check --live` uses it.
     """
 
     build: Builder
@@ -209,18 +206,64 @@ def _check(args: argparse.Namespace, chosen: Mapping[str, StackSpec], schemas: M
 
         rules = [*rules, find_retention_problems]
     for name, spec in chosen.items():
+        template = spec.build()
         problems = find_all_problems(
-            spec.build(), schemas, inline=args.inline, unused=not args.no_unused, defaults=not args.no_defaults, rules=rules,
+            template, schemas, inline=args.inline, unused=not args.no_unused, defaults=not args.no_defaults, rules=rules,
         )
+        notes: list[str] = []
+        if args.live or args.deployed or args.plan or args.code:
+            try:
+                problems |= _live(args, name, spec, template, len(chosen), notes)
+            except _AwsError as err:
+                print(f"{name}: {err}", file=sys.stderr)
+                return 2
         if not problems:
             print(f"{name}: ok")
-            continue
-        failed += 1
-        print(f"{name}: {sum(map(len, problems.values()))} problem(s)")
-        for check, lines in problems.items():
-            for line in lines:
-                print(f"  [{check}] {line}")
+        else:
+            failed += 1
+            print(f"{name}: {sum(map(len, problems.values()))} problem(s)")
+            for check, lines in problems.items():
+                for line in lines:
+                    print(f"  [{check}] {line}")
+        for line in notes:
+            print(f"  {line}")
     return 1 if failed else 0
+
+
+class _AwsError(Exception):
+    """An `aws` command failed: the check could not run, which is not the same as the template being wrong."""
+
+
+def _stack_name(args: argparse.Namespace, name: str, spec: StackSpec, count: int) -> str:
+    if args.stack_name:
+        if count != 1:
+            raise SystemExit("--stack-name names one stack: select one")
+        return str(args.stack_name)
+    return spec.stack_name or name
+
+
+def _live(args: argparse.Namespace, name: str, spec: StackSpec, template: Mapping[str, Any], count: int, notes: list[str]) -> dict[str, list[str]]:
+    """The checks that ask AWS: `deployed` (the rendered template against the running stack's), `plan` (a change set that would replace or remove a stateful resource) and `code` (every S3 key a function reads exists)."""
+    from cfn_typed.changes import aws_runner, find_change_problems, find_deployed_differences, format_changes, get_deployed, plan
+    from cfn_typed.packaging import find_missing_code, s3_object_exists
+
+    runner = aws_runner(profile=args.profile, region=args.region)
+    stack = _stack_name(args, name, spec, count)
+    found: dict[str, list[str]] = {}
+    try:
+        if args.live or args.deployed:
+            found["deployed"] = find_deployed_differences(template, get_deployed(stack, stage=args.stage, runner=runner))
+        if args.live or args.plan:
+            changes = plan(stack, template, runner=runner, keep=args.keep, capabilities=args.capabilities)
+            found["plan"] = find_change_problems(changes, strict=args.strict)
+            notes.append(f"changes to {stack}:" if changes else f"no changes to {stack}")
+            notes.extend("  " + line for line in format_changes(changes).splitlines() if changes)
+        if args.live or args.code:
+            buckets = dict(item.split("=", 1) for item in args.bucket or [])
+            found["code"] = find_missing_code(template, lambda b, k: s3_object_exists(b, k, profile=args.profile, region=args.region), buckets=buckets)
+    except (RuntimeError, ValueError, TimeoutError, KeyError) as err:
+        raise _AwsError(str(err)) from err
+    return {check: lines for check, lines in found.items() if lines}
 
 
 _NAME_PROPERTY = {
@@ -325,121 +368,6 @@ def _diff(args: argparse.Namespace, chosen: Mapping[str, StackSpec]) -> int:
                 print(f"{name}: {path} does not exist (create it with --update)")
             else:
                 print("".join(difflib.unified_diff(expected.splitlines(True), actual.splitlines(True), str(path), "rendered")), end="")
-    return 1 if failed else 0
-
-
-def typegen_cache() -> Path:
-    from cfn_typed.typegen import CACHE
-
-    return CACHE
-
-
-def _stack_name(args: argparse.Namespace, name: str, spec: StackSpec, count: int) -> str:
-    if args.stack_name:
-        if count != 1:
-            raise SystemExit("--stack-name names one stack: select one")
-        return str(args.stack_name)
-    return spec.stack_name or name
-
-
-def _plan(args: argparse.Namespace, chosen: Mapping[str, StackSpec]) -> int:
-    from cfn_typed.changes import aws_runner, find_change_problems, format_changes, plan
-
-    runner = aws_runner(profile=args.profile, region=args.region)
-    failed = 0
-    for name, spec in chosen.items():
-        stack = _stack_name(args, name, spec, len(chosen))
-        try:
-            changes = plan(stack, spec.build(), runner=runner, keep=args.keep, capabilities=args.capabilities)
-        except (RuntimeError, ValueError, TimeoutError) as err:
-            print(f"{name}: {err}", file=sys.stderr)
-            return 2
-        problems = find_change_problems(changes, strict=args.strict)
-        print(f"{name} -> {stack}: {len(changes)} change(s)" if changes else f"{name} -> {stack}: no changes")
-        if changes:
-            print(format_changes(changes))
-        for line in problems:
-            print(f"  STOP: {line}")
-        failed += bool(problems)
-    return 1 if failed else 0
-
-
-def _adopt(args: argparse.Namespace, chosen: Mapping[str, StackSpec]) -> int:
-    from cfn_typed import typegen
-    from cfn_typed.adopt import resources_to_import
-    from cfn_typed.changes import aws_runner, format_changes, plan
-
-    identifiers: dict[str, dict[str, str]] = {}
-    for item in args.id:
-        try:
-            where, value = item.split("=", 1)
-            logical, key = where.split(".", 1)
-        except ValueError:
-            print(f"--id {item!r} is not LOGICAL.Property=VALUE", file=sys.stderr)
-            return 2
-        identifiers.setdefault(logical, {})[key] = value
-    if len(chosen) != 1:
-        print(f"name one stack ({', '.join(chosen)})", file=sys.stderr)
-        return 2
-    ((name, spec),) = chosen.items()
-    template = spec.build()
-    try:
-        resources = resources_to_import(template, identifiers, typegen.load_schemas(typegen.ensure_schemas(args.schemas)))
-    except ValueError as err:
-        print(err, file=sys.stderr)
-        return 1
-    if not args.create:
-        print(json.dumps(resources, indent=2))
-        return 0
-    stack = _stack_name(args, name, spec, 1)
-    try:
-        changes = plan(stack, template, runner=aws_runner(profile=args.profile, region=args.region), resources_to_import=resources, keep=True,
-                       change_set_name=args.change_set_name)
-    except (RuntimeError, ValueError, TimeoutError) as err:
-        print(err, file=sys.stderr)
-        return 2
-    print(format_changes(changes))
-    other = [c for c in changes if c.action != "Import"]
-    for c in other:
-        print(f"  STOP: {c.logical_id} would be {c.action.lower()}d: an import change set may only import")
-    print(f"change set {args.change_set_name} on {stack}; read it, then: aws cloudformation execute-change-set --stack-name {stack} --change-set-name {args.change_set_name}")
-    return 1 if other else 0
-
-
-def _deployed(args: argparse.Namespace, chosen: Mapping[str, StackSpec]) -> int:
-    from cfn_typed.changes import aws_runner, find_deployed_differences, get_deployed
-
-    runner = aws_runner(profile=args.profile, region=args.region)
-    failed = 0
-    for name, spec in chosen.items():
-        stack = _stack_name(args, name, spec, len(chosen))
-        try:
-            live = get_deployed(stack, stage=args.stage, runner=runner)
-        except (RuntimeError, KeyError) as err:
-            print(f"{name}: {err}", file=sys.stderr)
-            return 2
-        differences = find_deployed_differences(spec.build(), live)
-        if not differences:
-            print(f"{name} -> {stack}: the rendered template is the deployed one")
-            continue
-        failed += 1
-        print(f"{name} -> {stack}: {len(differences)} difference(s)")
-        for line in differences:
-            print(f"  {line}")
-    return 1 if failed else 0
-
-
-def _code(args: argparse.Namespace, chosen: Mapping[str, StackSpec]) -> int:
-    from cfn_typed.packaging import find_missing_code, s3_object_exists
-
-    buckets = dict(item.split("=", 1) for item in args.bucket or [])
-    failed = 0
-    for name, spec in chosen.items():
-        problems = find_missing_code(spec.build(), lambda b, k: s3_object_exists(b, k, profile=args.profile, region=args.region), buckets=buckets)
-        print(f"{name}: ok" if not problems else f"{name}: {len(problems)} problem(s)")
-        for line in problems:
-            print(f"  {line}")
-        failed += bool(problems)
     return 1 if failed else 0
 
 
@@ -649,6 +577,19 @@ def main(
     p.add_argument("--no-unused", action="store_true", help="skip the unused parameter/condition/mapping check")
     p.add_argument("--no-defaults", action="store_true", help="do not check parameter defaults")
     p.add_argument("--retention", action="store_true", help="also require DeletionPolicy and UpdateReplacePolicy Retain or Snapshot on stateful resources (tables, buckets, keys, ...)")
+    live = p.add_argument_group("checks that ask AWS (your credentials; none of them changes anything)")
+    live.add_argument("--live", action="store_true", help="all three of: --deployed --plan --code")
+    live.add_argument("--deployed", action="store_true", help="the rendered template differs from the running stack's (get-template)")
+    live.add_argument("--plan", action="store_true", help="a change set against the running stack would replace or remove a stateful resource (table, bucket, key, ...); it is created, read and deleted, never executed")
+    live.add_argument("--code", action="store_true", help="an S3 object that a function or layer reads is missing")
+    live.add_argument("--stack-name", help="the deployed stack's name when it is not the name here (one stack); a StackSpec can carry it as stack_name=")
+    live.add_argument("--bucket-name", dest="bucket", action="append", metavar="LOGICAL=NAME", help="--code: the real name of a bucket the template refers to (the deployment bucket), repeatable")
+    live.add_argument("--template-stage", dest="stage", choices=["Original", "Processed"], default="Original", help="--deployed: Processed is the template after the transforms (SAM) have run")
+    live.add_argument("--capabilities", nargs="*", default=["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM"], help="--plan: default CAPABILITY_IAM CAPABILITY_NAMED_IAM")
+    live.add_argument("--keep-change-set", dest="keep", action="store_true", help="--plan: leave the change set in CloudFormation, to read or execute it there")
+    live.add_argument("--strict", action="store_true", help="--plan: stop on any replacement or removal, not only stateful resources")
+    live.add_argument("--aws-profile", dest="profile", help="the AWS profile to use")
+    live.add_argument("--aws-region", dest="region", help="the AWS region to use")
     _add_flags(p, flags)
     if standalone:
         p.add_argument("--schemas", metavar="MODULE", help="a package generated by cfn-typegen, to check against the registry schemas")
@@ -663,42 +604,6 @@ def main(
     p.add_argument("args", nargs="*", metavar="[DIR] [STACK]", help="directory that holds NAME.yaml for each stack (omit it to use each StackSpec's out), then stack names; if the first word is a stack name, there is no directory")
     p.add_argument("-f", "--format", choices=list(_FORMATS), default="yaml")
     p.add_argument("--update", action="store_true", help="rewrite the files instead of failing")
-    _add_flags(p, flags)
-
-    def aws_flags(p: argparse.ArgumentParser) -> None:
-        p.add_argument("--aws-profile", dest="profile", help="the AWS profile to use")
-        p.add_argument("--aws-region", dest="region", help="the AWS region to use")
-
-    p = sub.add_parser("plan", help="make a change set against the running stack, show it, delete it; exit status 1 when a stateful resource would be replaced or removed")
-    p.add_argument("stack", nargs="*", help=stack_help)
-    p.add_argument("--stack-name", help="the deployed stack's name when it is not the name here (one stack)")
-    p.add_argument("--capabilities", nargs="*", default=["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM"], help="default: CAPABILITY_IAM CAPABILITY_NAMED_IAM")
-    p.add_argument("--keep-change-set", dest="keep", action="store_true", help="leave the change set in CloudFormation, to read or execute it there")
-    p.add_argument("--strict", action="store_true", help="stop on any replacement or removal, not only stateful resources")
-    aws_flags(p)
-    _add_flags(p, flags)
-
-    p = sub.add_parser("deployed", help="compare the rendered template with the running stack's own; exit status 1 when they differ")
-    p.add_argument("stack", nargs="*", help=stack_help)
-    p.add_argument("--stack-name", help="the deployed stack's name when it is not the name here (one stack)")
-    p.add_argument("--template-stage", dest="stage", choices=["Original", "Processed"], default="Original", help="Processed is the template after the transforms (SAM) have run")
-    aws_flags(p)
-    _add_flags(p, flags)
-
-    p = sub.add_parser("adopt", help="bring resources that exist outside the stack (a custom domain made by an API call) into it: print the ResourcesToImport, or create the IMPORT change set")
-    p.add_argument("stack", nargs="*", help=stack_help)
-    p.add_argument("--id", action="append", required=True, metavar="LOGICAL.PROPERTY=VALUE", help="a part of a resource's identifier, repeatable (a type's primary identifier may have several: DomainName and BasePath)")
-    p.add_argument("--create", action="store_true", help="create the IMPORT change set (kept, not executed) instead of printing the list")
-    p.add_argument("--change-set-name", default="cfn-typed-adopt")
-    p.add_argument("--stack-name", help="the deployed stack's name when it is not the name here")
-    p.add_argument("--schemas", type=Path, default=typegen_cache(), help="CloudformationSchema.zip, the registry schemas that say what identifies each type (downloaded if missing)")
-    aws_flags(p)
-    _add_flags(p, flags)
-
-    p = sub.add_parser("code", help="check that every S3 object the functions and layers read exists; exit status 1 when one is missing")
-    p.add_argument("stack", nargs="*", help=stack_help)
-    p.add_argument("--bucket-name", dest="bucket", action="append", metavar="LOGICAL=NAME", help="the real name of a bucket the template refers to (the deployment bucket), repeatable")
-    aws_flags(p)
     _add_flags(p, flags)
 
     p = sub.add_parser("zip", help="check what is inside a package zip: required files, a handler that exists, the Serverless WSGI files; optionally call the handler once")
@@ -759,14 +664,6 @@ def main(
             return _check(args, chosen, schemas, rules)
         case "ls":
             return _resources(args, chosen)
-        case "plan":
-            return _plan(args, chosen)
-        case "deployed":
-            return _deployed(args, chosen)
-        case "adopt":
-            return _adopt(args, chosen)
-        case "code":
-            return _code(args, chosen)
         case _:
             return _diff(args, chosen)
 

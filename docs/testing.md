@@ -229,9 +229,9 @@ fails when a file is missing from the package or the handler's module does not d
 WSGI plugin packages, `call_handler(path, handler, event)` runs the handler once in a fresh interpreter, and `assert_code_exists(template, buckets={...})` looks up every S3 object the
 functions and layers read (it calls `aws s3api head-object`). They are in `cfn_typed.packaging` and `cfn_typed.testing`, and
 [ejecting from the Serverless Framework](deploying/eject-serverless.md#python-wsgi-apps) uses them. The same checks are the
-[`zip` and `code` commands](cli.md#code-and-zip-what-the-template-points-at).
+[`zip` command and `check --code`](cli.md#zip-what-is-inside-a-package).
 
-For a stack that is already deployed, [`plan` and `deployed`](cli.md#plan-what-a-deploy-would-do-before-it-does-it) are the check that matters most: a change set that would replace a table.
+For a stack that is already deployed, [`check --plan` and `--deployed`](cli.md#check-live-ask-aws-about-a-stack-that-is-already-deployed) are the check that matters most: a change set that would replace a table.
 
 ## What it does and does not check
 

@@ -1,14 +1,9 @@
-import json
-import zipfile
-from pathlib import Path
 from typing import Any
 
 import pytest
 
-from cfn_typed import changes, typegen
 from cfn_typed.adopt import find_adopt_problems, primary_identifier, resources_to_import
 from cfn_typed.changes import plan
-from cfn_typed.cli import StackSpec, main
 
 SCHEMAS = [
     {"typeName": "AWS::ApiGateway::DomainName", "primaryIdentifier": ["/properties/DomainName"]},
@@ -61,28 +56,3 @@ def test_an_import_change_set_is_made_with_the_list_and_kept() -> None:
     create = calls[0]
     assert "IMPORT" in create and "--resources-to-import" in create and create[create.index("--change-set-name") + 1] == "adopt"
     assert "delete-change-set" not in [c[1] for c in calls]
-
-
-def test_the_adopt_command_prints_the_list_or_creates_the_change_set(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    schemas = tmp_path / "schemas.zip"
-    with zipfile.ZipFile(schemas, "w") as archive:
-        for schema in SCHEMAS:
-            archive.writestr(f"{schema['typeName']}.json", json.dumps(schema))
-    stacks = {"site": StackSpec(lambda: TEMPLATE, stack_name="shop-site-dev")}
-    argv = ["adopt", "--schemas", str(schemas), "--id", "Domain.DomainName=api.example.com"]
-    assert main(stacks, argv=argv, prog="x") == 0
-    assert json.loads(capsys.readouterr().out)[0]["LogicalResourceId"] == "Domain"
-    assert main(stacks, argv=["adopt", "--schemas", str(schemas), "--id", "Domain.Name=x"], prog="x") == 1
-    assert main(stacks, argv=["adopt", "--schemas", str(schemas), "--id", "nonsense"], prog="x") == 2
-
-    seen: list[list[str]] = []
-
-    def runner(args):
-        seen.append(list(args))
-        if args[1] == "describe-change-set":
-            return {"Status": "CREATE_COMPLETE", "Changes": [{"ResourceChange": {"Action": "Import", "LogicalResourceId": "Domain", "ResourceType": "AWS::ApiGateway::DomainName"}}]}
-
-    monkeypatch.setattr(changes, "aws_runner", lambda **_: runner)
-    assert main(stacks, argv=[*argv, "--create"], prog="x") == 0
-    assert "execute-change-set --stack-name shop-site-dev" in capsys.readouterr().out and "shop-site-dev" in seen[0]
-    assert typegen.CACHE.name == "CloudformationSchema.zip"

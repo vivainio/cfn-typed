@@ -2,7 +2,7 @@
 
 `cfn_typed.cli` is an optional command line that you call from your own `main()`. It is not a
 `cfn-typed` command: your script says which stacks exist, and the library gives them four
-subcommands, `emit`, `check`, `diff` and `ls`, and for a stack that is already deployed `plan`, `deployed`, `adopt` and `code` (`zip` needs no stack, and the standalone `cfn-typed` command adds `import`).
+subcommands, `emit`, `check`, `diff` and `ls` (`check` can also ask AWS about a stack that is already deployed; `zip` needs no stack, and the standalone `cfn-typed` command adds `import`).
 Nothing else in the package imports it, and it needs nothing beyond the standard library and PyYAML.
 
 ```python
@@ -208,65 +208,47 @@ tried against the template while importing and written only when it renders the 
 [`cfn_typed.asl`](state-machines.md) types and checks; the template then differs from the original in that one
 property. For a service built with the Serverless Framework, see [Ejecting from the Serverless Framework](deploying/eject-serverless.md).
 
-## `plan`: what a deploy would do, before it does it
+## `check --live`: ask AWS about a stack that is already deployed
+
+`check` is offline and fast by default. Three opt-in flags add the checks that need AWS, and `--live` turns on all three. None of them
+changes anything: they read, and the one change set is created, read and deleted. They use your credentials (`--aws-profile`, `--aws-region`),
+and the stack name is the name here, unless the stack has `StackSpec(build, stack_name="shop-site-dev")` (a service that set its own
+`stackName`) or you pass `--stack-name`.
 
 ```text
-$ python stacks.py plan site
-site -> shop-site-dev: 3 change(s)
-Fn    AWS::Lambda::Function          Modify  Properties.MemorySize
-Dist  AWS::CloudFront::Distribution  Modify (replacement)  Properties.Origins (always)
-Key   AWS::KMS::Key                  Modify (maybe replacement)
-  STOP: Dist (AWS::CloudFront::Distribution) would be replaced (Properties.Origins (always))
-  STOP: Key (AWS::KMS::Key) may be replaced
+$ python stacks.py check --live site --bucket-name ServerlessDeploymentBucket=shop-dev-deployment-abc
+site: 3 problem(s)
+  [deployed] Resources.Fn.Properties.Runtime: rendered "python3.12", deployed "python3.11"
+  [plan] Dist (AWS::CloudFront::Distribution) would be replaced (Properties.Origins (always))
+  [plan] Key (AWS::KMS::Key) may be replaced
+  [code] Resources.Fn.Properties.Code: s3://shop-dev-deployment-abc/api-2.zip does not exist
+  changes to shop-site-dev:
+    Fn    AWS::Lambda::Function          Modify  Properties.MemorySize
+    Dist  AWS::CloudFront::Distribution  Modify (replacement)  Properties.Origins (always)
+    Key   AWS::KMS::Key                  Modify (maybe replacement)
 ```
 
-Creates a change set of the rendered template against the running stack, with your AWS credentials (`--aws-profile`, `--aws-region`), prints it,
-and deletes it again (`--keep-change-set` keeps it, to read or execute it in CloudFormation). It never executes it. The exit status is 1 when a
-stateful resource would be replaced or removed: a table, bucket, queue, key, distribution, log group or database (the list is `cfn_typed.changes.STATEFUL`).
-`--strict` stops on any replacement or removal. An empty change set prints `no changes`, which is what an ejection should give.
+| Flag | Finds |
+|---|---|
+| `--deployed` | where the rendered template differs from the running stack's, by path in the template (`get-template`; `--template-stage Processed` is after the transforms have run, the one to take for a SAM stack). It is the live version of the test that compares `build()` with `original.json`, and the first thing to run on one real stack before ejecting any others |
+| `--plan` | a stateful resource that a change set would replace or remove: a table, bucket, queue, key, distribution, log group or database (the list is `cfn_typed.changes.STATEFUL`; `--strict` stops on any replacement or removal). The change set is never executed, and `--keep-change-set` leaves it in CloudFormation to read there. An empty one prints `no changes to ...`, which is what an ejection should give. The template goes inline, so it must be under 51,200 bytes |
+| `--code` | an S3 object that a function or layer reads and that is not there (`aws s3api head-object`). A bucket that is a `Ref` needs its real name from `--bucket-name LOGICAL=NAME` |
 
-The stack name is the name here, unless the stack has `StackSpec(build, stack_name="shop-site-dev")` (a service that set its own
-`stackName`), or you pass `--stack-name`. The template goes inline, so it must be under 51,200 bytes. Add `check --retention` to also require
-`DeletionPolicy` and `UpdateReplacePolicy` `Retain` on those same resources.
+An `aws` command that fails (no such stack, no permission) exits 2: the check could not run, which says nothing about the template.
+`check --retention` is the offline companion of `--plan`: it requires `DeletionPolicy` and `UpdateReplacePolicy` `Retain` on those same resources.
 
-## `deployed`: the rendered template against the running one
+## `zip`: what is inside a package
 
-```text
-$ python stacks.py deployed site --template-stage Processed
-site -> shop-site-dev: 1 difference(s)
-  Resources.Fn.Properties.Runtime: rendered "python3.12", deployed "python3.11"
-```
-
-Fetches the stack's template (`get-template`; `Processed` is after the transforms have run, which is the one to take for a SAM stack) and lists
-where the rendered one differs, by path in the template. It is the live version of the test that compares `build()` with `original.json`,
-and the first thing to run on one real stack before ejecting any others. Exit status 1 on a difference.
-
-## `adopt`: take over resources that exist outside the stack
+An empty change set cannot see inside a zip.
 
 ```text
-$ python stacks.py adopt site --id Domain.DomainName=api.example.com --id Mapping.DomainName=api.example.com --id Mapping.BasePath='(none)' --create
-```
-
-For what a tool created with API calls, not in the template (the `serverless-domain-manager` plugin's custom domain and mapping). Put the
-resources in the template with `DeletionPolicy: Retain`, name each one's identifier (`LOGICAL.Property=VALUE`; the properties are the type's
-primary identifier in the registry schema, and the command says which when they are wrong), and it prints the `ResourcesToImport` list, or
-with `--create` makes the IMPORT change set and keeps it for you to read and execute. An import may only import: it is its own deploy, before
-the one that changes anything else.
-
-## `code` and `zip`: what the template points at
-
-An empty change set cannot see inside a zip, or whether an S3 object is there.
-
-```text
-$ python stacks.py code site --bucket-name ServerlessDeploymentBucket=shop-dev-serverlessdeploymentbucket-abc
 $ cfn-typed zip build/api.zip --wsgi --app api.app --invoke event.json
 ```
 
-`code` looks up every S3 key a function or layer names (`aws s3api head-object`) and fails on one that is missing. A bucket that is a `Ref` needs its real
-name from `--bucket-name LOGICAL=NAME`. `zip` reads a package: `--require NAME` files, a `--handler module.function` that the zip defines, and `--wsgi`
+`zip` reads a package, with no stack: `--require NAME` files, a `--handler module.function` that the zip defines, and `--wsgi`
 for what the Serverless WSGI plugin packages (see [ejecting](deploying/eject-serverless.md#python-wsgi-apps)). `--invoke EVENT.json` calls the handler once
 in a fresh Python and prints the result; that runs the code in the zip, so use it on a zip you built.
-The same checks are in Python: `cfn_typed.packaging` and `assert_zip_ok`, `assert_wsgi_package_ok`, `assert_code_exists` in `cfn_typed.testing`.
+The same checks are in Python: `cfn_typed.packaging`, and `assert_zip_ok`, `assert_wsgi_package_ok` and `assert_code_exists` in `cfn_typed.testing`.
 
 ## `ls`: list the resources
 
@@ -289,5 +271,5 @@ A type with a blank name is a missing entry, and a pull request that adds it is 
 | Status | Meaning |
 | --- | --- |
 | 0 | everything is fine |
-| 1 | `check` found problems, or `diff` found a difference or a missing file, or `plan` found a stateful resource that would be lost, or `deployed` found a difference, or `code` and `zip` found a problem |
+| 1 | `check` found problems, or `diff` found a difference or a missing file, or `check --live` (or one of its flags) found a problem, or `zip` found one |
 | 2 | bad usage, such as `emit` with several stacks and no `-o`, or an `aws` command that failed |

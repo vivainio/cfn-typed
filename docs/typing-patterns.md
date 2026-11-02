@@ -43,8 +43,8 @@ caller adds its own keys and splats the result into the factory, so the fragment
 --8<-- "examples/typing_patterns.py:fragment"
 ```
 
-Annotate the return type. Without it the checker infers a plain `dict[str, ...]`, and the call to the factory
-loses its checking.
+Annotate the return type. Without it a wrong value in the fragment is not reported anywhere, because the checker
+sees a plain `dict` and does not check it against the factory. With it, the error is reported at the `return`.
 
 ## One typed config, many stacks
 

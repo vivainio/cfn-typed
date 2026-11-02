@@ -163,6 +163,33 @@ Factories also take `depends_on`, `deletion_policy`, `update_replace_policy`,
 property name. Python keywords and builtins get a trailing underscore
 (`lambda_`).
 
+## Properties that are set only sometimes
+
+When a Python value decides whether a property is there, build the properties in a variable typed with the `Props` class
+and add the optional ones with `if`:
+
+```python
+props: sqs.QueueProps = {"QueueName": name}
+if fifo:
+    props["FifoQueue"] = True
+queue = sqs.queue(**props)
+```
+
+Every key is still checked: a misspelled `props["FifoQueu"]` is an error, and so is a value of the wrong type. The keys are
+written in the order they are added, which is the order of the rendered template.
+
+Do not splat a conditional dict into the call:
+
+```python
+sqs.queue(QueueName=name, **({"FifoQueue": True} if fifo else {}))   # does not type check
+```
+
+The checker cannot tell which key the dict holds, so it checks the dict's values against every parameter of the factory and
+reports an error for each, whichever property you meant. The more properties the resource has, the longer the list.
+
+This is about a value in your Python. To leave a property out depending on a *template* condition, use
+[`if_`](intrinsics.md) with `ref("AWS::NoValue")`.
+
 ## Why the checker is strict
 
 - **Closed TypedDicts.** Shapes the schema marks `additionalProperties: false` are

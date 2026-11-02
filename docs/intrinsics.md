@@ -32,6 +32,8 @@ and you never have to wrap one. Pseudo parameters are plain refs: `ref("AWS::Reg
 | `arn(service, resource)` | `Fn::Sub` | an ARN built from the partition, region and account, with `arn.bucket(...)`, `arn.function(...)` and more; see [policy statements](policy.md#arns) |
 
 `if_` is how a property is left out: `if_("IsProd", 5, ref("AWS::NoValue"))` sets it in production and omits it elsewhere.
+That is a condition in the template. For a property that depends on a value in your Python, see
+[Properties that are set only sometimes](generator.md#properties-that-are-set-only-sometimes).
 
 ## Conditions
 

@@ -149,7 +149,7 @@ ARNs or account IDs in a committed fixture or example: invent them.
 - **Never change the logical ID of a stateful resource** (table, bucket, queue, database, stream): a new ID is a
   replacement, which deletes the old resource. Set `deletion_policy="Retain"` first; use a resource import to move.
 - **Optional properties**: build `props: sqs.QueueProps = {...}`, add keys with `if flag: props["Key"] = ...`, and call
-  `sqs.queue(**props)`. Never splat a conditional dict (`**({...} if flag else {})`): the checker reports an error for
+  `sqs.queue(**props)`. Never splat a conditional dict (`**({...} if flag else {})`): `ty` (at this time) reports an error for
   every parameter of the factory.
 - Do not invent property or type names: `cfn-typegen search`, or read the generated module.
 - Do not execute a change set the user has not seen.

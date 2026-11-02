@@ -184,7 +184,7 @@ Do not splat a conditional dict into the call:
 sqs.queue(QueueName=name, **({"FifoQueue": True} if fifo else {}))   # does not type check
 ```
 
-The checker cannot tell which key the dict holds, so it checks the dict's values against every parameter of the factory and
+At this time `ty` cannot tell which key the dict holds, so it checks the dict's values against every parameter of the factory and
 reports an error for each, whichever property you meant. The more properties the resource has, the longer the list.
 
 This is about a value in your Python. To leave a property out depending on a *template* condition, use

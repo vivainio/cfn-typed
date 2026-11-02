@@ -193,7 +193,7 @@ config object and make one [`StackSpec`](cli.md#stackspec-where-each-stack-rende
 `emit` writes `rendered/buckets/bucket-logs.yaml`, `bucket-uploads.yaml` and `bucket-exports.yaml`, and `diff` and
 `check` cover all three. Each bucket is its own stack with its own file in review, and a bucket that later needs
 something the others do not (replication, say) gets a new field in `BucketConfig`. The properties that only some buckets have are added with `if` to a typed `props` dict, as in
-[Properties that are set only sometimes](generator.md#properties-that-are-set-only-sometimes). If the stacks will
+[Properties that are set only sometimes](typing-patterns.md#properties-that-are-set-only-sometimes). If the stacks will
 always be identical and differ only by a name or a tag, a single template with parameters, deployed once per bucket, is
 simpler.
 

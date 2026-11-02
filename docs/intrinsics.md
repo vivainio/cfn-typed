@@ -33,7 +33,7 @@ and you never have to wrap one. Pseudo parameters are plain refs: `ref("AWS::Reg
 
 `if_` is how a property is left out: `if_("IsProd", 5, ref("AWS::NoValue"))` sets it in production and omits it elsewhere.
 That is a condition in the template. For a property that depends on a value in your Python, see
-[Properties that are set only sometimes](generator.md#properties-that-are-set-only-sometimes).
+[Properties that are set only sometimes](typing-patterns.md#properties-that-are-set-only-sometimes).
 
 ## Conditions
 

@@ -17,6 +17,11 @@
     $ python stacks.py check                        # every check; exit status 1 when anything is found
     $ python stacks.py ls --type 'AWS::SQS::*'  # logical id, type and name of each resource
     $ python stacks.py diff rendered/               # compare with the committed files; --update rewrites them
+    $ python stacks.py plan orders                  # a change set against the running stack, never executed; exit status 1 when a table, bucket, key... would be replaced or removed
+    $ python stacks.py deployed orders              # the rendered template against the running stack's own
+    $ python stacks.py adopt orders --id Domain.DomainName=api.example.com --create   # import a resource that exists outside the stack
+    $ python stacks.py code orders --bucket-name ServerlessDeploymentBucket=NAME   # every S3 object the functions read exists
+    $ python stacks.py zip build/app.zip --wsgi     # what is inside a package zip (the Serverless WSGI files, a handler that exists)
 
 It also works with no Python code at all: give it template files (JSON, or YAML with short-form intrinsics) and use `cfn-typed`
 (or `python -m cfn_typed.cli`):
@@ -68,11 +73,15 @@ class StackSpec:
 
     `settings` is a dataclass for this stack, in place of the one given to `main`: its fields are command line flags, and
     `build` is called with an instance. See `main`.
+
+    `stack_name` is the name of the deployed CloudFormation stack when it is not the name this stack has here (a service
+    that set its own `stackName`). `plan` and `deployed` use it.
     """
 
     build: Builder
     out: Path | str | None = None
     settings: type | None = None
+    stack_name: str | None = None
 
     @property
     def out_dir(self) -> Path | None:
@@ -100,8 +109,12 @@ def _short_form(loader: Any, suffix: str, node: Any) -> dict[str, Any]:
 
 def load_template(path: Path) -> dict[str, Any]:
     """Read a template file: JSON, or YAML (needs PyYAML) with the short-form intrinsics (`!Ref`, `!GetAtt A.Arn`, `!Sub`, ...)."""
-    text = path.read_text()
-    if path.suffix == ".json" or text.lstrip().startswith("{"):
+    return parse_template(path.read_text(), json_file=path.suffix == ".json")
+
+
+def parse_template(text: str, *, json_file: bool = False) -> dict[str, Any]:
+    """`load_template` for the text of a template: JSON when `json_file` or it starts with a brace, else YAML with the short-form intrinsics."""
+    if json_file or text.lstrip().startswith("{"):
         return json.loads(text)
     import yaml
 
@@ -191,6 +204,10 @@ def _emit(args: argparse.Namespace, chosen: Mapping[str, StackSpec]) -> int:
 
 def _check(args: argparse.Namespace, chosen: Mapping[str, StackSpec], schemas: ModuleType | None, rules: Sequence[Rule]) -> int:
     failed = 0
+    if args.retention:
+        from cfn_typed.changes import find_retention_problems
+
+        rules = [*rules, find_retention_problems]
     for name, spec in chosen.items():
         problems = find_all_problems(
             spec.build(), schemas, inline=args.inline, unused=not args.no_unused, defaults=not args.no_defaults, rules=rules,
@@ -309,6 +326,145 @@ def _diff(args: argparse.Namespace, chosen: Mapping[str, StackSpec]) -> int:
             else:
                 print("".join(difflib.unified_diff(expected.splitlines(True), actual.splitlines(True), str(path), "rendered")), end="")
     return 1 if failed else 0
+
+
+def typegen_cache() -> Path:
+    from cfn_typed.typegen import CACHE
+
+    return CACHE
+
+
+def _stack_name(args: argparse.Namespace, name: str, spec: StackSpec, count: int) -> str:
+    if args.stack_name:
+        if count != 1:
+            raise SystemExit("--stack-name names one stack: select one")
+        return str(args.stack_name)
+    return spec.stack_name or name
+
+
+def _plan(args: argparse.Namespace, chosen: Mapping[str, StackSpec]) -> int:
+    from cfn_typed.changes import aws_runner, find_change_problems, format_changes, plan
+
+    runner = aws_runner(profile=args.profile, region=args.region)
+    failed = 0
+    for name, spec in chosen.items():
+        stack = _stack_name(args, name, spec, len(chosen))
+        try:
+            changes = plan(stack, spec.build(), runner=runner, keep=args.keep, capabilities=args.capabilities)
+        except (RuntimeError, ValueError, TimeoutError) as err:
+            print(f"{name}: {err}", file=sys.stderr)
+            return 2
+        problems = find_change_problems(changes, strict=args.strict)
+        print(f"{name} -> {stack}: {len(changes)} change(s)" if changes else f"{name} -> {stack}: no changes")
+        if changes:
+            print(format_changes(changes))
+        for line in problems:
+            print(f"  STOP: {line}")
+        failed += bool(problems)
+    return 1 if failed else 0
+
+
+def _adopt(args: argparse.Namespace, chosen: Mapping[str, StackSpec]) -> int:
+    from cfn_typed import typegen
+    from cfn_typed.adopt import resources_to_import
+    from cfn_typed.changes import aws_runner, format_changes, plan
+
+    identifiers: dict[str, dict[str, str]] = {}
+    for item in args.id:
+        try:
+            where, value = item.split("=", 1)
+            logical, key = where.split(".", 1)
+        except ValueError:
+            print(f"--id {item!r} is not LOGICAL.Property=VALUE", file=sys.stderr)
+            return 2
+        identifiers.setdefault(logical, {})[key] = value
+    if len(chosen) != 1:
+        print(f"name one stack ({', '.join(chosen)})", file=sys.stderr)
+        return 2
+    ((name, spec),) = chosen.items()
+    template = spec.build()
+    try:
+        resources = resources_to_import(template, identifiers, typegen.load_schemas(typegen.ensure_schemas(args.schemas)))
+    except ValueError as err:
+        print(err, file=sys.stderr)
+        return 1
+    if not args.create:
+        print(json.dumps(resources, indent=2))
+        return 0
+    stack = _stack_name(args, name, spec, 1)
+    try:
+        changes = plan(stack, template, runner=aws_runner(profile=args.profile, region=args.region), resources_to_import=resources, keep=True,
+                       change_set_name=args.change_set_name)
+    except (RuntimeError, ValueError, TimeoutError) as err:
+        print(err, file=sys.stderr)
+        return 2
+    print(format_changes(changes))
+    other = [c for c in changes if c.action != "Import"]
+    for c in other:
+        print(f"  STOP: {c.logical_id} would be {c.action.lower()}d: an import change set may only import")
+    print(f"change set {args.change_set_name} on {stack}; read it, then: aws cloudformation execute-change-set --stack-name {stack} --change-set-name {args.change_set_name}")
+    return 1 if other else 0
+
+
+def _deployed(args: argparse.Namespace, chosen: Mapping[str, StackSpec]) -> int:
+    from cfn_typed.changes import aws_runner, find_deployed_differences, get_deployed
+
+    runner = aws_runner(profile=args.profile, region=args.region)
+    failed = 0
+    for name, spec in chosen.items():
+        stack = _stack_name(args, name, spec, len(chosen))
+        try:
+            live = get_deployed(stack, stage=args.stage, runner=runner)
+        except (RuntimeError, KeyError) as err:
+            print(f"{name}: {err}", file=sys.stderr)
+            return 2
+        differences = find_deployed_differences(spec.build(), live)
+        if not differences:
+            print(f"{name} -> {stack}: the rendered template is the deployed one")
+            continue
+        failed += 1
+        print(f"{name} -> {stack}: {len(differences)} difference(s)")
+        for line in differences:
+            print(f"  {line}")
+    return 1 if failed else 0
+
+
+def _code(args: argparse.Namespace, chosen: Mapping[str, StackSpec]) -> int:
+    from cfn_typed.packaging import find_missing_code, s3_object_exists
+
+    buckets = dict(item.split("=", 1) for item in args.bucket or [])
+    failed = 0
+    for name, spec in chosen.items():
+        problems = find_missing_code(spec.build(), lambda b, k: s3_object_exists(b, k, profile=args.profile, region=args.region), buckets=buckets)
+        print(f"{name}: ok" if not problems else f"{name}: {len(problems)} problem(s)")
+        for line in problems:
+            print(f"  {line}")
+        failed += bool(problems)
+    return 1 if failed else 0
+
+
+def _zip(args: argparse.Namespace) -> int:
+    from cfn_typed.packaging import WSGI_HANDLER, call_handler, find_wsgi_problems, find_zip_problems
+
+    problems = find_wsgi_problems(args.zip, app=args.app) if args.wsgi else []
+    if args.require or args.handler or not args.wsgi:
+        problems += find_zip_problems(args.zip, args.require or (), handler=args.handler)
+    for line in problems:
+        print(line)
+    if problems:
+        return 1
+    print(f"{args.zip}: ok")
+    if args.invoke:
+        handler = args.handler or (WSGI_HANDLER if args.wsgi else None)
+        if handler is None:
+            print("--invoke needs --handler (or --wsgi)", file=sys.stderr)
+            return 2
+        try:
+            print(json.dumps(call_handler(args.zip, handler, json.loads(Path(args.invoke).read_text())), indent=2))
+        except AssertionError as err:
+            print(err, file=sys.stderr)
+            return 1
+    return 0
 
 
 @dataclass(frozen=True)
@@ -492,6 +648,7 @@ def main(
     p.add_argument("--inline", action="store_true", help="templates are sent inline, so the 51,200-byte limit applies")
     p.add_argument("--no-unused", action="store_true", help="skip the unused parameter/condition/mapping check")
     p.add_argument("--no-defaults", action="store_true", help="do not check parameter defaults")
+    p.add_argument("--retention", action="store_true", help="also require DeletionPolicy and UpdateReplacePolicy Retain or Snapshot on stateful resources (tables, buckets, keys, ...)")
     _add_flags(p, flags)
     if standalone:
         p.add_argument("--schemas", metavar="MODULE", help="a package generated by cfn-typegen, to check against the registry schemas")
@@ -508,11 +665,56 @@ def main(
     p.add_argument("--update", action="store_true", help="rewrite the files instead of failing")
     _add_flags(p, flags)
 
+    def aws_flags(p: argparse.ArgumentParser) -> None:
+        p.add_argument("--aws-profile", dest="profile", help="the AWS profile to use")
+        p.add_argument("--aws-region", dest="region", help="the AWS region to use")
+
+    p = sub.add_parser("plan", help="make a change set against the running stack, show it, delete it; exit status 1 when a stateful resource would be replaced or removed")
+    p.add_argument("stack", nargs="*", help=stack_help)
+    p.add_argument("--stack-name", help="the deployed stack's name when it is not the name here (one stack)")
+    p.add_argument("--capabilities", nargs="*", default=["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM"], help="default: CAPABILITY_IAM CAPABILITY_NAMED_IAM")
+    p.add_argument("--keep-change-set", dest="keep", action="store_true", help="leave the change set in CloudFormation, to read or execute it there")
+    p.add_argument("--strict", action="store_true", help="stop on any replacement or removal, not only stateful resources")
+    aws_flags(p)
+    _add_flags(p, flags)
+
+    p = sub.add_parser("deployed", help="compare the rendered template with the running stack's own; exit status 1 when they differ")
+    p.add_argument("stack", nargs="*", help=stack_help)
+    p.add_argument("--stack-name", help="the deployed stack's name when it is not the name here (one stack)")
+    p.add_argument("--template-stage", dest="stage", choices=["Original", "Processed"], default="Original", help="Processed is the template after the transforms (SAM) have run")
+    aws_flags(p)
+    _add_flags(p, flags)
+
+    p = sub.add_parser("adopt", help="bring resources that exist outside the stack (a custom domain made by an API call) into it: print the ResourcesToImport, or create the IMPORT change set")
+    p.add_argument("stack", nargs="*", help=stack_help)
+    p.add_argument("--id", action="append", required=True, metavar="LOGICAL.PROPERTY=VALUE", help="a part of a resource's identifier, repeatable (a type's primary identifier may have several: DomainName and BasePath)")
+    p.add_argument("--create", action="store_true", help="create the IMPORT change set (kept, not executed) instead of printing the list")
+    p.add_argument("--change-set-name", default="cfn-typed-adopt")
+    p.add_argument("--stack-name", help="the deployed stack's name when it is not the name here")
+    p.add_argument("--schemas", type=Path, default=typegen_cache(), help="CloudformationSchema.zip, the registry schemas that say what identifies each type (downloaded if missing)")
+    aws_flags(p)
+    _add_flags(p, flags)
+
+    p = sub.add_parser("code", help="check that every S3 object the functions and layers read exists; exit status 1 when one is missing")
+    p.add_argument("stack", nargs="*", help=stack_help)
+    p.add_argument("--bucket-name", dest="bucket", action="append", metavar="LOGICAL=NAME", help="the real name of a bucket the template refers to (the deployment bucket), repeatable")
+    aws_flags(p)
+    _add_flags(p, flags)
+
+    p = sub.add_parser("zip", help="check what is inside a package zip: required files, a handler that exists, the Serverless WSGI files; optionally call the handler once")
+    p.add_argument("zip", type=Path)
+    p.add_argument("--require", action="append", metavar="NAME", help="a file that must be in the zip, repeatable")
+    p.add_argument("--handler", metavar="MODULE.FUNCTION", help="a Python handler that the zip must define")
+    p.add_argument("--wsgi", action="store_true", help="the zip is a Serverless WSGI package: wsgi_handler.py, serverless_wsgi.py and .serverless-wsgi, handler wsgi_handler.handler")
+    p.add_argument("--app", metavar="MODULE.VARIABLE", help="with --wsgi: the app .serverless-wsgi must name")
+    p.add_argument("--invoke", metavar="EVENT.json", help="call the handler once with this event (this runs the code in the zip) and print the result")
+
     if standalone:
         p = sub.add_parser("import", help="write a template file as typed Python (types from `cfn-typegen --template FILE`)")
         p.add_argument("template", type=Path)
         p.add_argument("-o", "--out", type=Path, help="write the module to this file instead of printing it")
         p.add_argument("--types", default="cfn_types", help="the package cfn-typegen generated (default: cfn_types)")
+        p.add_argument("--sls", action="store_true", help="a Serverless Framework template: write what the framework wrote for a function, event, API or role as calls to cfn_typed_sumo.sls (needs cfn-typed-sumo), each only when it renders the same resources")
         p.add_argument("--asl", action="store_true", help="write each state machine's DefinitionString (Step Functions ASL) as a Definition object, typed and checked by cfn_typed.asl; the module then no longer renders to exactly the original")
 
         p = sub.add_parser("skill", help="print the agent skill (SKILL.md) that teaches an AI assistant to use cfn-typed, and where its directory is")
@@ -524,6 +726,8 @@ def main(
         args.dir, args.stack = (None, args.args) if first is None or first in named else (Path(first), rest)
         if args.dir is None and standalone:
             ap.error("give a directory")
+    if args.command == "zip":
+        return _zip(args)
     if args.command == "skill":
         print(skill_dir() if args.dir else skill_text(), end="\n" if args.dir else "")
         return 0
@@ -532,6 +736,14 @@ def main(
 
         if not args.template.is_file():
             ap.error(f"no such file: {args.template}")
+        if args.sls:
+            if args.asl:
+                ap.error("--sls and --asl cannot be combined: --asl changes the template, --sls must not")
+            try:
+                from cfn_typed_sumo import sls_import
+            except ImportError:
+                ap.error("--sls needs cfn-typed-sumo: uv add cfn-typed-sumo")
+            return sls_import.main(str(args.template), str(args.out) if args.out else None, args.types)
         return importer.main(str(args.template), str(args.out) if args.out else None, args.types, args.asl)
     if standalone:
         chosen = _from_files(args.stack, ap)
@@ -547,6 +759,14 @@ def main(
             return _check(args, chosen, schemas, rules)
         case "ls":
             return _resources(args, chosen)
+        case "plan":
+            return _plan(args, chosen)
+        case "deployed":
+            return _deployed(args, chosen)
+        case "adopt":
+            return _adopt(args, chosen)
+        case "code":
+            return _code(args, chosen)
         case _:
             return _diff(args, chosen)
 

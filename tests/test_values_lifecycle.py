@@ -21,7 +21,9 @@ def test_runtime_dates_decide_what_is_reported() -> None:
     p = find_lifecycle_problems(fn("python3.8"), today=after_dep)
     assert len(p) == 1 and "Resources.F.Properties.Runtime: 'python3.8' is deprecated since" in p[0] and "blocked from" in p[0]
     blocked = find_lifecycle_problems(fn("python3.8"), today=create_blocked)
-    assert "can no longer be" in blocked[0]
+    assert "can no longer be created (since 2027-07-29) or updated (since 2027-08-31)" in blocked[0] and "first change to it fails" in blocked[0]
+    only_create = find_lifecycle_problems(fn("python3.7"), today=soon)  # creating has been blocked for a year, updating is not yet
+    assert "can no longer be created with it (since 2024-01-09), updating is blocked from 2027-08-31" in only_create[0]
 
 
 def test_runtime_is_followed_through_parameters_and_maps() -> None:

@@ -12,6 +12,7 @@ import difflib
 import os
 from collections.abc import Mapping, Sequence
 from datetime import date
+from os import PathLike
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -24,6 +25,7 @@ from cfn_typed.constraints import find_constraint_problems
 from cfn_typed.iam import find_iam_problems
 from cfn_typed.lifecycle import find_lifecycle_problems
 from cfn_typed.limits import find_limit_problems
+from cfn_typed.packaging import Exists, find_missing_code, find_wsgi_problems, find_zip_problems
 from cfn_typed.references import find_reference_problems, find_unused_problems
 from cfn_typed.render import to_json, to_yaml
 from cfn_typed.values import find_value_problems
@@ -123,6 +125,27 @@ def assert_runtimes_supported(template: Mapping[str, Any], *, today: date | None
     problems = find_lifecycle_problems(template, today=today, defaults=defaults)
     if problems:
         raise AssertionError("the template uses deprecated Lambda runtimes:\n" + "\n".join(f"  {p}" for p in problems))
+
+
+def assert_zip_ok(path: str | PathLike[str], required: Sequence[str] = (), *, handler: str | None = None) -> None:
+    """Fail unless the zip holds every `required` file and, given `handler` (`pkg.module.function`), a module that defines it. An empty change set cannot see inside a zip. See `cfn_typed.packaging`."""
+    problems = find_zip_problems(path, required, handler=handler)
+    if problems:
+        raise AssertionError("the zip is not sound:\n" + "\n".join(f"  {p}" for p in problems))
+
+
+def assert_wsgi_package_ok(path: str | PathLike[str], *, app: str | None = None) -> None:
+    """Fail unless the zip has what the Serverless WSGI plugin packaged: `wsgi_handler.py`, `serverless_wsgi.py` and `.serverless-wsgi` (whose `app` is a module in the zip). See `cfn_typed.packaging`."""
+    problems = find_wsgi_problems(path, app=app)
+    if problems:
+        raise AssertionError("the WSGI package is not sound:\n" + "\n".join(f"  {p}" for p in problems))
+
+
+def assert_code_exists(template: Mapping[str, Any], exists: Exists | None = None, *, buckets: Mapping[str, str] | None = None) -> None:
+    """Fail if a function or layer names an S3 object that is not there (this calls `aws s3api head-object` unless `exists` is given). See `cfn_typed.packaging.find_missing_code`."""
+    problems = find_missing_code(template, exists, buckets=buckets)
+    if problems:
+        raise AssertionError("the template points at code that is not there:\n" + "\n".join(f"  {p}" for p in problems))
 
 
 def assert_within_limits(template: Mapping[str, Any], *, inline: bool = False) -> None:

@@ -97,10 +97,12 @@ cfn-typed ls template.yaml -t lambda              # resources: logical id, type,
 cfn-typed emit template.yaml -f json              # convert JSON and YAML either way
 cfn-typed diff rendered/ template.yaml            # compare with the committed rendered/template.yaml
 cfn-typed import template.json -o stack.py        # existing template -> typed Python (see below)
+cfn-typed import --sls template.json -o stack.py  # a Serverless Framework template -> sls.* calls where they render the same
+cfn-typed zip app.zip --wsgi --invoke event.json   # what is inside a package zip, and call its handler once
 cfn-typed skill                                   # print this skill, and where its directory is
 ```
 
-To give your own program the same subcommands (`emit`, `check`, `diff`, `ls`) for the stacks it builds, call
+To give your own program the same subcommands (`emit`, `check`, `diff`, `ls`, and for a deployed stack `plan`, `deployed`, `adopt`, `code`) for the stacks it builds, call
 `cfn_typed.cli.main({"orders": build}, schemas=cfn_types)` from its `main()`.
 
 **Test by rendering.** Commit the rendered YAML and have CI assert the code still renders exactly that:
@@ -117,7 +119,11 @@ intended change.
 factory calls for resources, `cfn.*` builders for intrinsics, logical IDs and values untouched. What a factory cannot
 express (`Custom::*`, `CreationPolicy`, `UpdatePolicy`, property names that are not identifiers) stays a plain dict with a
 comment; the file header lists them. Generate the types first with `cfn-typegen --template`. Prove the result with
-`assert build() == json.load(open("template.json"))`, run `ty check`, and review a change set before any deploy.
+`assert build() == json.load(open("template.json"))`, run `ty check`, and review a change set before any deploy:
+`stacks.py plan` makes one and exits 1 when a stateful resource would be replaced or removed, and `stacks.py deployed` compares
+the rendered template with the running stack's. For a Serverless Framework service use `import --sls` (and read the book's
+ejecting page): the empty change set does not see inside the zip, so check it with `cfn-typed zip` (a wsgi app needs
+`wsgi_handler.py`, `serverless_wsgi.py` and `.serverless-wsgi`, and its handler is `wsgi_handler.handler`).
 
 ## Step Functions state machines
 

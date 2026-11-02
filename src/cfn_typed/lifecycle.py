@@ -37,8 +37,11 @@ def find_lifecycle_problems(template: Mapping[str, Any], *, today: date | None =
             where = f"Resources.{logical}.Properties.Runtime"
             note = f" ({origin})" if origin else ""
             use = f"; use {successor}" if successor else ""
-            if _due(create, today):
-                out.append(f"{where}: {runtime!r} was deprecated {deprecated} and functions can no longer be created with it (since {create}){use}{note}")
+            if _due(create, today) and _due(update, today):
+                out.append(f"{where}: {runtime!r} was deprecated {deprecated}: functions can no longer be created (since {create}) or updated (since {update}) with it{use}{note}. An unchanged template does not touch the function; the first change to it fails")
+            elif _due(create, today):
+                later = f", updating is blocked from {update}" if update else ""
+                out.append(f"{where}: {runtime!r} was deprecated {deprecated} and functions can no longer be created with it (since {create}){later}{use}{note}")
             elif _due(update, today):
                 out.append(f"{where}: {runtime!r} was deprecated {deprecated} and functions can no longer be updated with it (since {update}){use}{note}")
             else:

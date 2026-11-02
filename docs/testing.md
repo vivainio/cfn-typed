@@ -222,6 +222,17 @@ resource without a `Condition` refers to one that has it, unless an `Fn::If` or 
 A company's own rules go in the same call: `assert_template_ok(template, acme_cfn, rules=COMPANY_RULES)`. See
 [Company rules](patterns/company-rules.md).
 
+## Checking the code a template points at
+
+A rendered template says which zip and which S3 key a function uses, and nothing about what is in them. `assert_zip_ok(path, required=[...], handler="app.handler")`
+fails when a file is missing from the package or the handler's module does not define the function, `assert_wsgi_package_ok(path, app="api.app")` is that for what the Serverless
+WSGI plugin packages, `call_handler(path, handler, event)` runs the handler once in a fresh interpreter, and `assert_code_exists(template, buckets={...})` looks up every S3 object the
+functions and layers read (it calls `aws s3api head-object`). They are in `cfn_typed.packaging` and `cfn_typed.testing`, and
+[ejecting from the Serverless Framework](deploying/eject-serverless.md#python-wsgi-apps) uses them. The same checks are the
+[`zip` and `code` commands](cli.md#code-and-zip-what-the-template-points-at).
+
+For a stack that is already deployed, [`plan` and `deployed`](cli.md#plan-what-a-deploy-would-do-before-it-does-it) are the check that matters most: a change set that would replace a table.
+
 ## What it does and does not check
 
 A golden file proves the code renders what you committed. It does not prove that CloudFormation

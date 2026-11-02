@@ -92,7 +92,7 @@ examples (`examples/rendered/`).
 
 `cfn_typed.cli.main(stacks)` gives your own script `emit`, `check`, `diff` and `ls` subcommands: print or write
 templates, run every check (exit status 1 on a problem), compare with the committed files, and list resources. It is
-optional and your `main()` calls it. `cfn-typed check template.yaml` runs the same subcommands on any template file, with no Python code. See the book.
+optional and your `main()` calls it. `cfn-typed check template.yaml` runs the same subcommands on any template file, with no Python code. For a stack that is already deployed there are also `plan` (a change set that is read and never executed, exit status 1 when a table, bucket, key or distribution would be replaced or removed), `deployed` (the rendered template against the running stack's), `adopt` (resource import) and `code` and `zip` (what the template's zip and S3 keys really hold). `cfn-typed import --sls` turns a Serverless Framework template into `cfn_typed_sumo.sls` calls (`uv add cfn-typed cfn-typed-sumo` to migrate a service, and copy `sls.py` into your own package once it runs smoothly to drop the sumo dependency; see "Ejecting from the Serverless Framework" in the book). See the book.
 
 ## Permission names
 

@@ -88,3 +88,34 @@ def test_yaml_one_one_words_stay_quoted_and_are_read_back_the_same() -> None:
 
 def test_the_loader_reads_yaml_one_one_booleans() -> None:
     assert parse_template("A: yes\nOn: x\nB: 0x1F\n") == {"A": True, True: "x", "B": 31}
+
+
+def test_a_blank_line_inside_a_note_stays_a_bare_hash() -> None:
+    assert cfn.to_yaml({"A": 1 @ cfn.note("one\n\ntwo")}) == "# one\n#\n# two\nA: 1\n"
+    assert cfn.to_yaml({"A": 1 @ cfn.note(["one", "", "two"])}) == "# one\n#\n# two\nA: 1\n"
+
+
+def test_blank_lines_at_the_ends_and_an_empty_note_write_nothing() -> None:
+    assert cfn.to_yaml({"A": 1 @ cfn.note("\n\none\n\n")}) == "# one\nA: 1\n"
+    assert cfn.to_yaml({"A": 1 @ cfn.note("")}) == "A: 1\n"
+
+
+def test_windows_line_ends_and_trailing_spaces_are_dropped() -> None:
+    assert cfn.to_yaml({"A": 1 @ cfn.note("a  \r\nb")}) == "# a\n# b\nA: 1\n"
+
+
+def test_a_multi_line_value_keeps_its_block_scalar_with_a_note_above() -> None:
+    script = "#!/bin/bash\necho hi\n"
+    text = cfn.to_yaml({"Body": script @ cfn.note("runs on boot")})
+    assert text == "# runs on boot\nBody: |\n  #!/bin/bash\n  echo hi\n"
+    assert parse_template(text) == {"Body": script}
+
+
+def test_a_triple_quoted_note_is_dedented_but_keeps_its_relative_indent() -> None:
+    text = cfn.to_yaml({"A": 1 @ cfn.note("""
+        Receives order events.
+          indented example
+        Owner: orders.
+    """)})
+    assert text == "# Receives order events.\n#   indented example\n# Owner: orders.\nA: 1\n"
+    assert cfn.to_yaml({"A": 1 @ cfn.note("a\n    b")}) == "# a\n#     b\nA: 1\n"

@@ -17,6 +17,7 @@ subclassed, so annotating one raises `TypeError`.
 """
 
 from collections.abc import Sequence
+from textwrap import dedent
 from typing import Any
 
 __all__ = ["Note", "comment_of", "note"]
@@ -74,10 +75,14 @@ class Note:
 
 
 def note(text: str | Sequence[str]) -> Note:
-    """The comment for `value @ note("text")`. A string with newlines, or a list of strings, is several lines."""
+    """The comment for `value @ note("text")`. A string with newlines, or a list of strings, is several lines; a blank line stays a bare `#`, and the indentation the lines share (a triple-quoted string in indented code) is removed."""
     parts = [text] if isinstance(text, str) else list(text)
-    lines = tuple(line.rstrip() for part in parts for line in part.split("\n"))
-    return Note(lines)
+    lines = [line.rstrip() for part in parts for line in (dedent(part).splitlines() or [""])]
+    while lines and not lines[0]:  # blank lines at either end say nothing; one in the middle is a paragraph break
+        lines.pop(0)
+    while lines and not lines[-1]:
+        lines.pop()
+    return Note(tuple(lines))
 
 
 def comment_of(value: object) -> tuple[str, ...]:

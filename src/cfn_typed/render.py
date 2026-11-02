@@ -64,8 +64,10 @@ def to_yaml(template: Mapping[str, Any]) -> str:
     from ruamel.yaml import YAML
     from ruamel.yaml.comments import CommentedMap, CommentedSeq
     from ruamel.yaml.emitter import Emitter as BaseEmitter
+    from ruamel.yaml.error import CommentMark
     from ruamel.yaml.representer import RoundTripRepresenter
     from ruamel.yaml.scalarstring import LiteralScalarString, SingleQuotedScalarString
+    from ruamel.yaml.tokens import CommentToken
 
     class Representer(RoundTripRepresenter):
         def ignore_aliases(self, data: Any) -> bool:  # shared lists (e.g. tags) are repeated, not &anchored
@@ -95,8 +97,10 @@ def to_yaml(template: Mapping[str, Any]) -> str:
 
     def note(container: Any, key: Any, value: Any, col: int) -> None:
         lines = comment_of(value)
-        if lines:
-            container.yaml_set_comment_before_after_key(key, before="\n".join(lines), indent=col)
+        if lines:  # not `yaml_set_comment_before_after_key`: it writes a blank line, not `#`, for an empty one
+            mark = CommentMark(col)
+            tokens = [CommentToken(f"# {line}\n" if line else "#\n", mark) for line in lines]
+            container.ca.items.setdefault(key, [None, [], None, None])[1].extend(tokens)
 
     # `col` is where the node's own lines start: the keys of a mapping, the dashes of a sequence. That is how far a
     # comment above one of them is indented.

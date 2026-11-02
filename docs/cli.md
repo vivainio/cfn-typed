@@ -3,7 +3,7 @@
 `cfn_typed.cli` is an optional command line that you call from your own `main()`. It is not a
 `cfn-typed` command: your script says which stacks exist, and the library gives them four
 subcommands, `emit`, `check`, `diff` and `ls` (`check` can also ask AWS about a stack that is already deployed; `zip` needs no stack, and the standalone `cfn-typed` command adds `import`).
-Nothing else in the package imports it, and it needs nothing beyond the standard library and PyYAML.
+Nothing else in the package imports it, and it needs nothing beyond the standard library and ruamel.yaml.
 
 ```python
 # stacks.py
@@ -48,7 +48,7 @@ $ cfn-typed diff rendered/ template.yaml      # compare with rendered/template.y
 ```
 
 A stack is named after its file without the suffix, and two files with the same name are an
-error. YAML needs PyYAML (the `yaml` extra); JSON needs nothing. Without generated types the
+error. YAML needs ruamel.yaml, which is installed with the package; JSON needs nothing. Without generated types the
 schema checks are off, and `--schemas cfn_types` (for `check`) turns them on from a package that
 `cfn-typegen` generated, imported from the current directory. To add your own rules, write the
 `main()` above instead.

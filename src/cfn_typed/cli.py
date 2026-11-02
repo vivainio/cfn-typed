@@ -28,7 +28,7 @@ It also works with no Python code at all: give it template files (JSON, or YAML 
     $ cfn-typed emit template.yaml -f json          # convert between JSON and YAML
     $ cfn-typed check template.yaml --schemas cfn_types   # add the schema checks from a generated package
 
-Nothing else in `cfn_typed` imports this module, and it needs nothing beyond the standard library and PyYAML.
+Nothing else in `cfn_typed` imports this module, and it needs nothing beyond the standard library and ruamel.yaml.
 `stacks` is one builder (a function that returns the template) or a mapping from stack name to builder. A value can also be a
 `StackSpec(build, out=DIR)`, so that `emit` and `diff` know where that stack's template is rendered.
 `settings=Settings` (a dataclass) turns its fields into flags, and each builder that takes an argument gets an instance; see `main`.
@@ -96,7 +96,7 @@ _FORMATS = {"json": ".json", "yaml": ".yaml"}
 
 def _short_form(loader: Any, suffix: str, node: Any) -> dict[str, Any]:
     """Inverse of the YAML short forms: `!Ref X` is `{"Ref": "X"}`, `!GetAtt A.Arn` is `{"Fn::GetAtt": ["A", "Arn"]}`."""
-    from yaml import MappingNode, ScalarNode, SequenceNode
+    from ruamel.yaml.nodes import MappingNode, ScalarNode, SequenceNode
 
     if isinstance(node, ScalarNode):
         value: Any = loader.construct_scalar(node)
@@ -112,7 +112,7 @@ def _short_form(loader: Any, suffix: str, node: Any) -> dict[str, Any]:
 
 
 def load_template(path: Path) -> dict[str, Any]:
-    """Read a template file: JSON, or YAML (needs PyYAML) with the short-form intrinsics (`!Ref`, `!GetAtt A.Arn`, `!Sub`, ...)."""
+    """Read a template file: JSON, or YAML with the short-form intrinsics (`!Ref`, `!GetAtt A.Arn`, `!Sub`, ...)."""
     return parse_template(path.read_text(), json_file=path.suffix == ".json")
 
 
@@ -120,13 +120,17 @@ def parse_template(text: str, *, json_file: bool = False) -> dict[str, Any]:
     """`load_template` for the text of a template: JSON when `json_file` or it starts with a brace, else YAML with the short-form intrinsics."""
     if json_file or text.lstrip().startswith("{"):
         return json.loads(text)
-    import yaml
+    from ruamel.yaml import YAML
+    from ruamel.yaml.constructor import SafeConstructor
 
-    class Loader(yaml.SafeLoader):
+    class Constructor(SafeConstructor):
         pass
 
-    Loader.add_multi_constructor("!", _short_form)
-    return yaml.load(text, Loader=Loader)  # noqa: S506 (a SafeLoader subclass)
+    Constructor.add_multi_constructor("!", _short_form)
+    yaml = YAML(typ="safe", pure=True)
+    yaml.Constructor = Constructor
+    yaml.version = (1, 1)  # CloudFormation's reading: `yes` and `On` are booleans
+    return yaml.load(text)
 
 
 def skill_dir() -> Path:

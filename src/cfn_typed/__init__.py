@@ -4,6 +4,7 @@ Resource factories live in generated modules (`cfn_typed.aws.sqs`, ...); this
 package holds the intrinsics, template types and a few helpers.
 """
 
+from cfn_typed.comments import note
 from cfn_typed.base import AnyResource, HasResources, Output, Parameter, Resources, Tag, Template
 from cfn_typed.helpers import combine, merge, tags
 from cfn_typed.params import Params, dynamic_ssm
@@ -18,6 +19,6 @@ __all__ = [
     "AnyResource", "AnyStatement", "ConditionFn", "Expr", "HasResources", "Intrinsic", "NotActionStatement", "Output", "Parameter", "Params",
     "PolicyDocument", "Resources", "Statement", "Tag", "Template",
     "allow", "and_", "arn", "assume_role_policy", "base64", "cidr", "combine", "condition_ref", "deny", "dynamic_ssm", "equals",
-    "find_in_map", "get_att", "get_azs", "if_", "import_value", "join", "merge", "not_", "or_", "policy_document", "ref",
+    "find_in_map", "get_att", "get_azs", "if_", "import_value", "join", "merge", "not_", "note", "or_", "policy_document", "ref",
     "select", "split", "sub", "tags", "to_json", "to_yaml",
 ]

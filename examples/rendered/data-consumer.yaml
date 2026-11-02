@@ -32,9 +32,9 @@ Resources:
                 Resource:
                   - !Ref DataBucketArn
                   - !Join
-                    - ''
-                    - - !Ref DataBucketArn
-                      - /*
+                      - ''
+                      -   - !Ref DataBucketArn
+                          - /*
               - Effect: Allow
                 Action:
                   - kms:Decrypt

@@ -4,37 +4,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 import cfn_typed as cfn
+from cfn_typed.cli import parse_template
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 
 
-def _construct(loader: yaml.SafeLoader, suffix: str, node: yaml.Node) -> dict[str, Any]:
-    """Inverse of the short forms: `!Ref X` -> {"Ref": "X"}, `!GetAtt A.Arn` -> {"Fn::GetAtt": ["A", "Arn"]}."""
-    if isinstance(node, yaml.ScalarNode):
-        value: Any = loader.construct_scalar(node)
-    elif isinstance(node, yaml.SequenceNode):
-        value = loader.construct_sequence(node, deep=True)
-    elif isinstance(node, yaml.MappingNode):
-        value = loader.construct_mapping(node, deep=True)
-    else:
-        raise TypeError(node)
-    if suffix == "GetAtt" and isinstance(value, str):
-        value = value.split(".", 1)
-    return {"Ref" if suffix == "Ref" else f"Fn::{suffix}": value}
-
-
-class Loader(yaml.SafeLoader):
-    pass
-
-
-Loader.add_multi_constructor("!", _construct)
-
-
 def load(text: str) -> Any:
-    return yaml.load(text, Loader=Loader)  # noqa: S506 - subclass of SafeLoader
+    return parse_template(text)
 
 
 def test_example_template_round_trips() -> None:

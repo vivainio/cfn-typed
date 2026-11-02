@@ -78,9 +78,9 @@ change lands, and commit the regenerated files in the same pull request as the c
 
 Two habits that make it dependable:
 
-- **Pin your tool versions.** The YAML text comes from PyYAML, so an upgrade that changes its
+- **Pin your tool versions.** The YAML text comes from ruamel.yaml, so an upgrade that changes its
   formatting would show up as a diff in every golden file. Commit your lock file (`uv.lock`) so CI
-  and your laptop render with the same versions, and upgrade `cfn-typed` and `pyyaml` on purpose,
+  and your laptop render with the same versions, and upgrade `cfn-typed` and `ruamel.yaml` on purpose,
   in their own pull request.
 - **One file per stack, not per stage.** Stages differ by CloudFormation [parameters](patterns/parameters.md), so
   `orders.yaml` is the template every stage deploys, and the file you review is the file that is deployed.

@@ -156,8 +156,8 @@ Resources:
             Action: s3:GetObject
             Resource: !Join
               - ''
-              - - !GetAtt SiteBucket.Arn
-                - /*
+              -   - !GetAtt SiteBucket.Arn
+                  - /*
             Condition:
               ArnEquals:
                 aws:SourceArn: !Sub
@@ -514,8 +514,8 @@ Resources:
                   - s3:PutObject
                 Resource: !Join
                   - ''
-                  - - !GetAtt Lake.Arn
-                    - /*
+                  -   - !GetAtt Lake.Arn
+                      - /*
               - Effect: Allow
                 Action: logs:PutLogEvents
                 Resource: !GetAtt EventsLogs.Arn

@@ -90,9 +90,29 @@ See [Parameters as variables](patterns/parameters.md).
 | Name | What it is |
 |---|---|
 | `to_json` | `json.dumps` with a default indent |
-| `to_yaml` | the same template as readable CloudFormation YAML, with intrinsics in short form |
+| `to_yaml` | the same template as readable CloudFormation YAML, with intrinsics in short form and `# comments` for values marked with `comment` |
+| `note` | `value @ note("text")`: the text becomes a YAML comment above the key that holds `value`; JSON and the checks never see it |
 
 See [Getting started](getting-started.md#json-or-yaml).
+
+### Comments
+
+A comment goes after the thing it describes, so the resource still comes first:
+
+```python
+"Jobs": sqs.queue(VisibilityTimeout=60) @ note("Receives order events"),
+"Dlq": sqs.queue() @ note(["Poison messages", "Kept for 14 days"]),
+```
+
+```yaml
+  # Receives order events
+  Jobs:
+    Type: AWS::SQS::Queue
+```
+
+`@` gives back a copy of the value that remembers the text. It works on a dict, a list, a string, an int or a float
+(a `bool` or `None` cannot carry one). Chain it to add lines. `to_json`, `==` and every check see an ordinary value, so
+a comment is for the reader of the YAML only, and `diff` and the golden-file check compare the data, not the comments.
 
 ## Testing
 

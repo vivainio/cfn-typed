@@ -55,10 +55,10 @@ Resources:
       Type: String
       Name: !Join
         - /
-        - - ''
-          - orders
-          - !Ref Stage
-          - queue-url
+        -   - ''
+            - orders
+            - !Ref Stage
+            - queue-url
       Value: !Ref Queue
   QueueDetail:
     Type: AWS::SSM::Parameter
@@ -84,8 +84,8 @@ Resources:
       Value: !Select
         - 1
         - !Split
-          - ','
-          - a,b,c
+            - ','
+            - a,b,c
   Bootstrap:
     Type: AWS::SSM::Parameter
     Properties:
@@ -113,6 +113,6 @@ Resources:
           CidrIp: !Select
             - 0
             - !Cidr
-              - 10.0.0.0/16
-              - 4
-              - 8
+                - 10.0.0.0/16
+                - 4
+                - 8

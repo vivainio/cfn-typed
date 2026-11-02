@@ -77,9 +77,9 @@ Resources:
             Resource:
               - !GetAtt DataBucket.Arn
               - !Join
-                - ''
-                - - !GetAtt DataBucket.Arn
-                  - /*
+                  - ''
+                  -   - !GetAtt DataBucket.Arn
+                      - /*
             Condition:
               Bool:
                 aws:SecureTransport: 'false'
@@ -90,9 +90,9 @@ Resources:
             Resource:
               - !GetAtt DataBucket.Arn
               - !Join
-                - ''
-                - - !GetAtt DataBucket.Arn
-                  - /*
+                  - ''
+                  -   - !GetAtt DataBucket.Arn
+                      - /*
             Condition:
               StringNotLike:
                 aws:PrincipalArn:

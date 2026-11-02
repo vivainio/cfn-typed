@@ -7,7 +7,7 @@ uv add cfn-typed          # the runtime pieces and the cfn-typegen command
 uv add --dev ty           # the type checker this project is tested with
 ```
 
-Python 3.14 or later is required. YAML output uses PyYAML, which is installed with it.
+Python 3.14 or later is required. YAML output uses ruamel.yaml, which is installed with it.
 
 ## Generate the types you use
 

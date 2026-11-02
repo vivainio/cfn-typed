@@ -3,7 +3,15 @@
 !!! note "Two kinds of ejecting"
     This page is about leaving the Serverless Framework (or SAM) for a service that is already deployed. Moving
     patterns you used from `cfn-typed-sumo` into your own package is a different thing, described in
-    [cfn-typed-sumo](../sumo.md#recommended-start-with-sumo-then-eject-what-you-use).
+    [cfn-typed-sumo](../sumo.md#recommended-start-with-sumo-then-eject-what-you-use). The two meet at the end of this page, in
+    [dropping the sumo dependency](#dropping-the-sumo-dependency).
+
+!!! tip "Start here"
+    Install both packages: `uv add cfn-typed cfn-typed-sumo`. `cfn-typed-sumo` has the Serverless helpers (`cfn_typed_sumo.sls`, and
+    `cfn-typed import --sls`, which writes calls to them) and the generated types for about 440 resource types, so you can
+    pass `--types cfn_typed_sumo.types` to `import` and skip `cfn-typegen` for ordinary stacks. The checks (`plan`, `deployed`,
+    `adopt`, `code`, `zip`) are in `cfn-typed` itself. When the ejected services are running smoothly, you can
+    [drop the sumo dependency](#dropping-the-sumo-dependency) by copying the helpers into your own package.
 
 The [Serverless Framework in a few lines](../patterns/serverless.md) page shows what a `functions:` entry becomes as patterns. This page
 is for a service that already runs: you want to stop using the framework for it, and you do not want CloudFormation to
@@ -26,6 +34,11 @@ $ cp .serverless/cloudformation-template-update-stack.json original.json
 For a service built with SAM, `sam build` does not expand the transform, so take the processed template of the deployed stack
 instead: `aws cloudformation get-template --stack-name NAME --template-stage Processed`.
 
+If the deploy script edits the package before it deploys (`sed -i "s/default-stage/$STAGE/g"` on the JSON, see
+[below](#where-the-frameworks-variables-went)), the file that matters is the one that was deployed, not the one `sls package` wrote:
+take it from the stack, `aws cloudformation get-template --stack-name NAME --template-stage Original`, so that the values are the real ones
+and the test compares with what is running.
+
 Only that file matters. It has the framework's logical IDs, `WorkerLambdaFunction`, `IamRoleLambdaExecution`,
 `EventsRuleSchedule1`, and those IDs are what CloudFormation matches the live stack against.
 
@@ -41,6 +54,11 @@ wrote imported.py
 `cfn-typegen --template` reads the resource types the template uses and generates a typed factory for each, from the
 CloudFormation registry schemas, so you get `lambda_.function`, `iam.role` and the rest for exactly this service. `import`
 writes `build() -> cfn.Template` with those factories, and a plain dict where there is no type for something.
+
+For a template from `sls package`, `cfn-typed import --sls original.json -o stack.py` goes further: where the framework's resources for a function,
+an event, the role, the bucket or an API are exactly what `cfn_typed_sumo.sls` writes (see [below](#then-use-the-patterns)), the module
+calls it, and everything else stays as the plain resources. Each call is tried against the template while importing and used only when it
+renders the same resources, so the module still renders to the original, and the header lists what stayed plain.
 
 The module renders back to the original. That is the first thing to pin, in the test suite and before you change a line:
 
@@ -118,6 +136,10 @@ reference, the template changes, which is what you want, and which a change set 
 
 A few of these are described in more detail:
 
+- **A `sed` for the region.** Some deploy scripts also run `sed -i "s/eu-west-1/$REGION/g"` on the package: a literal region
+  that was typed somewhere in the service is replaced in the generated text, wherever it appears. Find where it was meant (an ARN,
+  a bucket name) and make it the `region` argument; the same goes for an identity such as `default-identity` that the script fills in from a
+  pipeline variable.
 - **`${self:…}` and `${opt:…}`** are resolved when `sls package` runs, so the template holds the literal (`dev`,
   `eu-west-1`). These are the `SERVICE` and `STAGE` values in `eject.py`, and `STAGE` is a function argument if one
   file should render every stage.
@@ -163,14 +185,60 @@ The framework does four things a template does not show, and ejecting means doin
 
 Each of these is a change to the template, and each shows up in a diff.
 
-!!! tip "`serverless_wsgi.py` is not part of the framework"
-    Many Python apps (Flask, Django) have `serverless_wsgi.handler` as their Lambda handler. That file comes from
-    the `serverless-wsgi` plugin, which copies it into the package at deploy time, but it is a trivial standalone
-    wrapper that turns API Gateway events into WSGI calls. It is not tied to any part of Serverless. Put
-    `serverless_wsgi.py` in your package yourself (vendor the file, or `pip install serverless-wsgi` and bundle it with your
-    dependencies), keep `Handler` as it is, and the function runs unchanged after the ejection. Check that the plugin's
-    `wsgi.app` setting, which `serverless.yml` writes into `.serverless-wsgi` in the package, is replaced by that
-    file in your package too, since the wrapper reads the app's location from it.
+## What real services set
+
+The example services here use the framework's defaults. Most real ones set something that changes the template, and these are the
+ones found in a sample of real `serverless.yml` files:
+
+| `serverless.yml` | What is different | In `sls.function` |
+|---|---|---|
+| no `functions:`, only `resources:` | the template is those resources, copied as they are: no role, no deployment bucket resource. Most of the simple stacks are a bucket and its policy | nothing to call. `import` (or `import --sls`, which says it found nothing and writes the same) is the whole job |
+| `provider.deploymentBucket.name` | no `ServerlessDeploymentBucket`; `Code.S3Bucket` is that name, not a `Ref`, and the output holds the name | `bucket="name"`, and `sls.outputs(..., bucket="name")` |
+| `provider.versionFunctions: false` | no `{Key}LambdaVersion`, so no hash to copy | `versioned=False` |
+| `provider.iam.role: MyRole` | no `IamRoleLambdaExecution`; the role is yours, in `resources:`, and the function's `Role` points at it | `role=get_att("MyRole", "Arn")` |
+| `functions.x.name: some-name` | the function is not `{service}-{stage}-{key}` | `name="some-name"` |
+| `http` event `path: /{proxy+}`, `method: ANY`, `cors: true` | one REST method `ANY` on the `{proxy+}` resource, and its `OPTIONS` | `Route("/{proxy+}", "ANY", "app")` |
+| `package.artifact: x.zip`, `individually: true` | the zip is yours, built outside the framework: its key in the bucket is the only thing that moves | `s3_key` |
+
+`import --sls` handles all of them: it tries each call and writes it only when it renders what the template has, so a service
+that combines two of them is still right.
+
+## Python WSGI apps
+
+A Flask or Django service that uses the `serverless-wsgi` plugin has `wsgi_handler.handler` as its Lambda handler, not
+`serverless_wsgi.handler`. The plugin adds three files to the package when it packages, and none of them is in your code:
+
+| File | Where it comes from |
+|---|---|
+| `wsgi_handler.py` | **only the plugin's npm package** (`npm pack serverless-wsgi` and take it from the tarball), not PyPI. Vendor it into your repo with the plugin's licence |
+| `serverless_wsgi.py` | the PyPI package `serverless-wsgi`: install it with your dependencies, or vendor the file |
+| `.serverless-wsgi` | JSON the plugin writes from `custom.wsgi.app`: `cfn_typed.packaging.wsgi_config("api.app")` writes it |
+
+None of it is tied to the rest of Serverless, so the function runs unchanged once the three files are in the zip and `Handler`
+stays `wsgi_handler.handler`. The danger is that **an empty change set cannot see them**: they live in the zip, and a package
+that lacks one deploys cleanly and fails on the first request. Put a check in CI, after the build step that makes the zip:
+
+```python
+from cfn_typed.packaging import call_handler
+from cfn_typed.testing import assert_wsgi_package_ok
+
+
+def test_the_package_is_sound() -> None:
+    assert_wsgi_package_ok("build/api.zip", app="api.app")       # all three files, and the app is a module in the zip
+    reply = call_handler("build/api.zip", "wsgi_handler.handler", HEALTH_EVENT)   # the handler, once, in a fresh Python
+    assert reply["statusCode"] == 200
+```
+
+`HEALTH_EVENT` is an API Gateway proxy event: copy a real one (the API Gateway console's test tab, or a log line) and shorten it. The
+command line does the same: `cfn-typed zip build/api.zip --wsgi --app api.app --invoke event.json`. `.serverless-wsgi` is the plugin's file, so
+compare `wsgi_config` with the one in a package from a real `sls package` before relying on it.
+
+## Where the zip is
+
+The template names the code by an S3 key in the deployment bucket, and a plugin's custom resource (the `existing: true` S3 bucket
+one, for example) names its own zip there too. Keep those objects: if the key is gone, the next update of that function fails, and the
+change set does not tell you. `cfn-typed code STACK --bucket-name ServerlessDeploymentBucket=NAME` (or `assert_code_exists`) looks up every
+S3 key the template reads and lists the missing ones. Run it before the first deploy from the new code.
 
 ## Then use the patterns
 
@@ -188,11 +256,14 @@ nothing.
 | Function | Writes | IDs |
 |---|---|---|
 | `sls.function(key, ...)` | a `functions:` entry, with `log_destination=` for log forwarding | `{Key}LogGroup`, `{Key}LambdaFunction`, `{Key}LambdaVersion{id}`, `{Key}LogSubscriptionFilter` |
-| `sls.iam_role(service, stage, statements)` | the shared role | `IamRoleLambdaExecution` |
+| `sls.iam_role(service, stage, statements)` | the shared role. `log_actions=` is for a framework that wrote the log statement without `logs:TagResource` (versions 1 and 2) | `IamRoleLambdaExecution` |
 | `sls.deployment_bucket()` | the packaging bucket and its policy | `ServerlessDeploymentBucket`, `ServerlessDeploymentBucketPolicy` |
 | `sls.schedule_event(key, expression)` | a `schedule` event | `{Key}EventsRuleSchedule1`, `{Key}LambdaPermissionEventsRuleSchedule1` |
 | `sls.sqs_event(key, queue)` and `sls.sqs_statement(queue)` | an `sqs` event, and the role statement the framework adds for it | `{Key}EventSourceMappingSQS{Queue}` |
-| `sls.rest_api(service, stage, [Route(...)])` | `http` events: the API, a resource per path segment, a method per route, a CORS `OPTIONS` per path, the deployment, the permissions, and the API key bundle for `private=True` routes | `ApiGatewayRestApi`, `ApiGatewayResourceTodosIdVar`, `ApiGatewayMethodTodosIdVarGet`, `ApiGatewayMethodTodosOptions`, `ApiGatewayDeployment{id}`, `{Key}LambdaPermissionApiGateway`, `ApiGatewayApiKey1` |
+| `sls.sns_event(key, topic)` | an `sns` event on a topic in the template: the subscription and its permission | `{Key}SnsSubscription{Name}`, `{Key}LambdaPermission{Name}SNS` |
+| `sls.stream_event(key, stream, kind=...)` and `sls.stream_statement(kind, arn)` | a `stream` event (`dynamodb` or `kinesis`), and its role statement | `{Key}EventSourceMapping{Dynamodb\|Kinesis}{Name}` |
+| `sls.function(..., vpc=sls.Vpc(...))` and `sls.vpc_statement()` | a function in a VPC, and the network interface statement the framework adds to the role | `VpcConfig` on `{Key}LambdaFunction` |
+| `sls.rest_api(service, stage, [Route(...)])` | `http` events: the API, a resource per path segment, a method per route, a CORS `OPTIONS` per path, the deployment, the permissions, and the API key bundle for `private=True` routes. `binary_media_types=[...]` is `apiGateway.binaryMediaTypes` and goes on the API; `authorizers={...}` and `Route(authorizer=...)` write custom authorizers | `ApiGatewayRestApi`, `ApiGatewayResourceTodosIdVar`, `ApiGatewayMethodTodosIdVarGet`, `ApiGatewayMethodTodosOptions`, `ApiGatewayDeployment{id}`, `{Key}LambdaPermissionApiGateway`, `ApiGatewayApiKey1` |
 | `sls.http_api(name, [HttpRoute(...)], authorizers=...)` | `httpApi` events with JWT authorizers | `HttpApi`, `HttpApiStage`, `HttpApiAuthorizer{Name}`, `HttpApiIntegration{Key}`, `HttpApiRouteGetUsersIdVar`, `{Key}LambdaPermissionHttpApi` |
 | `sls.outputs(...)` and `sls.endpoint_outputs(...)` | the outputs the framework adds | `ServerlessDeploymentBucketName`, `{Key}LambdaFunctionQualifiedArn`, `ServiceEndpoint`, `HttpApiUrl` |
 
@@ -211,13 +282,108 @@ Some arguments need a value from the template you are ejecting from, because the
 `version_id` and `code_sha256` for each function, and `deployment_id` for the REST API's deployment (it is a timestamp). Copy them.
 The IDs have to stay the same, and the next deploy that changes the code decides what the new ones are.
 
-What is not here: `sns`, `stream`, `s3` and `cloudwatchLog` events, request authorizers on a REST API, and
-custom domains. They stay as typed resources from the `import`, and the test that compares with the original keeps them honest.
+What is not here: `s3` and `cloudwatchLog` events, and custom domains (see the next section). They stay as typed resources from the `import`, and
+the test that compares with the original keeps them honest. The authorizer, `sns`, `stream` and VPC pieces were written from the framework's
+documentation and its usual output, not from a template of yours, so `import --sls` is the check: when it does not claim a group, the
+group differs from what `sls` writes, and the plain resources are what to keep.
 The two templates here are made up, in the shapes the framework writes, so check the IDs against one of
 your own: `sls.function(...)` for a function, then `emit` and compare.
 
 Moving a resource to a pattern with its own IDs is still a real change, which is fine for stateless things and
 not for anything that holds data.
+
+## Resources the framework made with API calls
+
+A plugin can create a resource that is not in the template at all. `serverless-domain-manager` makes the API's custom domain, its
+base path mapping and the Route 53 record with API calls when you run `sls create_domain` and `sls deploy`. The package then has no
+trace of them. Ejecting such a service means putting them in the template, and CloudFormation cannot create a domain that
+exists, so you import it:
+
+1. Add the resources (`apigateway.domain_name`, `apigateway.base_path_mapping`, ...) with `deletion_policy="Retain"` and properties that
+   describe what exists.
+2. `cfn-typed adopt STACK --id Domain.DomainName=api.example.com --id Mapping.DomainName=api.example.com --id Mapping.BasePath='(none)' --create`
+   checks the identifiers against the registry schemas (the type's `primaryIdentifier`) and makes an IMPORT change set, kept for you to read.
+3. Execute it. An import changes nothing else, so it is its own deploy, before any other change.
+
+Check that the type supports import in AWS's list before planning on it: not every type does. The same
+mechanism moves any resource that was made by hand or by another tool into a stack.
+
+## When the runtime is already dead
+
+The check says which runtimes are past their dates (`cfn-typed check`), and for a runtime AWS no longer lets you update it says so:
+`nodejs8.10`, `python2.7` and `dotnetcore2.1` can be neither created nor updated. An ejection with an unchanged template never calls
+`UpdateFunction`, so the first deploy is safe, and the function keeps running. The block bites on the first change to the function
+(new code, memory, an environment variable): that deploy fails. So eject first, with an empty change set, and move the runtime as its own
+change, which is a Python or Node upgrade with its own testing. A runtime that is only deprecated is a warning, with a date.
+
+## The version of the framework
+
+A template from Serverless 1 or 2 differs from a version 3 one in details, so do not assume the shapes above. Known: the role's log
+statement has no `logs:TagResource` (`iam_role(log_actions=[...])`). The rest you find by importing: `import --sls` claims what matches
+and leaves the rest as plain resources. A service with its own `stackName` deploys under that name: give the stack
+`StackSpec(build, stack_name="...")` so `plan` and `deployed` look at the right one.
+
+## Try it on one real stack first
+
+The two example templates here are made up, and the tests prove the tools against those only. Before trusting any of it, run the
+whole procedure on one real stack, which costs nothing because nothing is executed:
+
+```text
+$ aws cloudformation get-template --stack-name NAME --template-stage Processed > original.json
+$ cfn-typed import --sls original.json -o stack.py        # then the tests: build() == original.json
+$ python stacks.py deployed ledger --stack-name NAME --template-stage Processed   # the rendered template against the running stack
+$ python stacks.py plan ledger --stack-name NAME                                  # a change set, never executed: it should say no changes
+```
+
+`deployed` says where the rendered template and the live one differ, and `plan` stops on a stateful resource that would be replaced. When both are clean, the
+ejection is exact for that stack. Start with one of the S3-only stacks, and keep a copy of the real `original.json`, with the
+account IDs and names replaced, as the test fixture for the services like it.
+
+## Dropping the sumo dependency
+
+`cfn-typed-sumo` is a good place to start, and a poor thing to keep: its helpers can change between releases, and the template of a
+running service should change when you decide. Once the ejected services deploy cleanly, with an empty change set and the tests
+that compare `build()` with the original passing, cut the dependency in three steps. Each leaves the rendered templates unchanged,
+which the tests prove.
+
+1. **Copy `sls.py`** from `packages/sumo/src/cfn_typed_sumo/` into your own `patterns/` directory (`cfn/patterns/sls.py`, in [the project layout](../project-layout.md)). It depends only on `cfn-typed`
+   and on the generated types of a few services, so there is nothing else to untangle. Copy `tests/test_sls.py` with it.
+2. **Generate the types it imports, yourself.** `sls.py` has no types of its own: there is no "sls" module to generate. It imports the
+   ordinary registry types of eight services (the `from cfn_typed_sumo.types import apigateway, apigatewayv2, events, iam, lambda_,
+   logs, s3, sns` at the top), which `cfn-typegen` makes for any project. Put them in your `cfn-typegen.toml`, with the templates of the services you
+   ejected, so that their other resources (a queue, a table) get factories in the same package:
+
+   ```toml
+   # cfn/cfn-typegen.toml: `cfn-typegen --config cfn/cfn-typegen.toml` writes cfn/cfn_types/
+   out = "cfn_types"
+   docs = false
+   types = [
+       # what patterns/sls.py imports
+       "AWS::ApiGateway::*",
+       "AWS::ApiGatewayV2::*",
+       "AWS::Events::Rule",
+       "AWS::IAM::Role",
+       "AWS::Lambda::*",
+       "AWS::Logs::*",
+       "AWS::S3::Bucket*",
+       "AWS::SNS::Subscription",
+   ]
+   # what each ejected service's own template uses
+   templates = ["../services/ledger/original.json", "../services/shop/original.json"]
+   ```
+
+   Then change the imports. In `patterns/sls.py`, `from cfn_typed_sumo.types import (...)` becomes `from cfn_types import (...)`. In each stack
+   module, `from cfn_typed_sumo import sls` becomes `from patterns import sls`, and `from cfn_typed_sumo.types import sqs` becomes `from cfn_types import sqs`.
+   Commit the toml, and either commit the generated files or generate them in CI
+   ([the choice is described here](../sumo.md#recommended-start-with-sumo-then-eject-what-you-use)).
+3. **Run what proves it.** The tests that compare `build()` with `original.json` for each service, `emit` before and after, and
+   `ty check`. Then remove `cfn-typed-sumo` from the dependencies, so that no import slips back.
+
+`import --sls` is a one-time tool and does not need to be copied: use it while you are ejecting
+(`uvx --with cfn-typed-sumo cfn-typed import --sls original.json -o stack.py` runs it without adding the package to the project), and the
+module it writes needs only your copy of `sls.py`. A service you eject later, after dropping the dependency, can run it the same way.
+You can also stop at any point: a service that works with sumo's helpers can keep them until you want to change one.
+[Start with sumo, then eject what you use](../sumo.md#recommended-start-with-sumo-then-eject-what-you-use) is the general version of this.
 
 ## Deploy to the same stack
 
@@ -229,6 +395,9 @@ $ aws cloudformation deploy --stack-name ledger-dev --template-file ledger.yaml 
     --capabilities CAPABILITY_NAMED_IAM --no-execute-changeset
 $ aws cloudformation describe-change-set --stack-name ledger-dev --change-set-name <name from the output>
 ```
+
+`python stacks.py plan ledger` (the [command line](../cli.md#plan-what-a-deploy-would-do-before-it-does-it) of your stack script) does the same without leaving a change set behind, prints the changes and exits 1 when a
+table, bucket, queue, key, distribution or database would be replaced or removed.
 
 Read the change set before executing it. An empty one means the ejection is exact. A resource marked `Replacement` is
 a logical ID or an immutable property that changed, and you decide whether that is fine for it.

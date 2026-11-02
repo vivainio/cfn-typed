@@ -27,6 +27,7 @@ from cfn_typed_sumo.types import (
     lambda_,
     logs,
     s3,
+    sns,
 )
 
 BUCKET = "ServerlessDeploymentBucket"
@@ -64,11 +65,14 @@ def iam_role(
     statements: Sequence[AnyStatement] = (),
     *,
     managed_policies: Sequence[Expr[str]] = (),
+    log_actions: Sequence[str] = ("logs:CreateLogStream", "logs:CreateLogGroup", "logs:TagResource"),
 ) -> Resources:
     """`IamRoleLambdaExecution`, the one role every function in the service shares.
 
     The framework writes the log statements itself, scoped to `{service}-{stage}`, so they are not in `statements`.
-    What an event needs, such as `sqs:ReceiveMessage` for an `sqs` event, is: pass it here.
+    What an event needs, such as `sqs:ReceiveMessage` for an `sqs` event (`sqs_statement`), `stream_statement`, or
+    `vpc_statement` for a function in a VPC, is: pass it here. `log_actions` are the actions of the first log statement; the
+    default is what version 3 writes, and version 1 and 2 wrote the same without `logs:TagResource`.
     """
     logs_arn = f"arn:${{AWS::Partition}}:logs:${{AWS::Region}}:${{AWS::AccountId}}:log-group:/aws/lambda/{service}-{stage}*:*"
     props: iam.RoleProps = {
@@ -79,7 +83,7 @@ def iam_role(
         "Policies": [{
             "PolicyName": join("-", [service, stage, "lambda"]),
             "PolicyDocument": {"Version": "2012-10-17", "Statement": [
-                {"Effect": "Allow", "Action": ["logs:CreateLogStream", "logs:CreateLogGroup", "logs:TagResource"], "Resource": [sub(logs_arn)]},
+                {"Effect": "Allow", "Action": list(log_actions), "Resource": [sub(logs_arn)]},
                 {"Effect": "Allow", "Action": ["logs:PutLogEvents"], "Resource": [sub(logs_arn + ":*")]},
                 *statements,
             ]},
@@ -90,6 +94,23 @@ def iam_role(
     if managed_policies:
         props["ManagedPolicyArns"] = list(managed_policies)
     return {ROLE: iam.role(**props)}
+
+
+@dataclass(frozen=True)
+class Vpc:
+    """`provider.vpc` or a function's `vpc:`: the security groups and subnets, as literals or as intrinsics."""
+
+    security_group_ids: Sequence[Expr[str]]
+    subnet_ids: Sequence[Expr[str]]
+
+
+def vpc_statement() -> AnyStatement:
+    """What the framework adds to the shared role when a function has a `vpc`: the network interface actions, on `*`. Pass it to `iam_role`."""
+    return {
+        "Effect": "Allow",
+        "Action": ["ec2:CreateNetworkInterface", "ec2:DescribeNetworkInterfaces", "ec2:DetachNetworkInterface", "ec2:DeleteNetworkInterface"],
+        "Resource": "*",
+    }
 
 
 @dataclass(frozen=True)
@@ -109,41 +130,67 @@ class Function:
 def function(
     key: str,
     *,
-    service: str,
-    stage: str,
+    service: str = "",
+    stage: str = "",
     s3_key: str,
     handler: str,
     runtime: str,
-    code_sha256: str,
-    version_id: str,
+    code_sha256: str = "",
+    version_id: str = "",
+    name: str | None = None,
+    bucket: Expr[str] | None = None,
+    versioned: bool = True,
+    role: Expr[str] | None = None,
     memory: int = 1024,
     timeout: int = 6,
     environment: Mapping[str, Expr[str]] | None = None,
     tags: list[Expr[Tag]] | None = None,
     log_retention_days: int | None = None,
     log_destination: Expr[str] | None = None,
+    vpc: Vpc | None = None,
+    layers: Sequence[Expr[str]] = (),
+    description: str | None = None,
+    reserved_concurrency: int | None = None,
 ) -> Function:
     """A `functions:` entry: `{Key}LogGroup`, `{Key}LambdaFunction` and `{Key}LambdaVersion{version_id}`, and `{Key}LogSubscriptionFilter` with `log_destination`.
 
     `s3_key` is where the zip is in the deployment bucket, and `version_id` is the suffix the framework put on the
     version's logical ID (a hash it computes; it is in the template you are ejecting from). The function is named
-    `{service}-{stage}-{key}`, as the framework names it.
+    `{service}-{stage}-{key}`, as the framework names it, or `name` when the service set one (`functions.x.name`). A `vpc` writes
+    `VpcConfig`; the role then needs `vpc_statement()`.
+
+    Three things services set that change the shape: `versioned=False` is `provider.versionFunctions: false` (no
+    `{Key}LambdaVersion`, so no `code_sha256` or `version_id`), `bucket` is `provider.deploymentBucket.name` (the code is in a bucket that
+    is not in the template, so `S3Bucket` is that name and not a `Ref`), and `role` is `provider.iam.role` (a role of your own, as an ARN
+    expression such as `get_att("MyRole", "Arn")`, instead of `IamRoleLambdaExecution`).
     """
+    if name is None and not (service and stage):
+        raise ValueError("give service and stage, which name the function, or name=")
+    if versioned and not (code_sha256 and version_id):
+        raise ValueError("a versioned function needs code_sha256 and version_id (copy them from the template), or versioned=False")
+    name_in_aws = name or f"{service}-{stage}-{key}"
     name = logical(key)
     log_group, fn, version = f"{name}LogGroup", f"{name}LambdaFunction", f"{name}LambdaVersion{version_id}"
-    name_in_aws = f"{service}-{stage}-{key}"
     logs_props: logs.LogGroupProps = {"LogGroupName": f"/aws/lambda/{name_in_aws}"}
     props: lambda_.FunctionProps = {
-        "Code": {"S3Bucket": ref(BUCKET), "S3Key": s3_key},
+        "Code": {"S3Bucket": ref(BUCKET) if bucket is None else bucket, "S3Key": s3_key},
         "Handler": handler,
         "Runtime": runtime,
         "FunctionName": name_in_aws,
         "MemorySize": memory,
         "Timeout": timeout,
-        "Role": get_att(ROLE, "Arn"),
+        "Role": get_att(ROLE, "Arn") if role is None else role,
     }
     if log_retention_days is not None:
         logs_props["RetentionInDays"] = log_retention_days
+    if description is not None:
+        props["Description"] = description
+    if vpc is not None:
+        props["VpcConfig"] = {"SecurityGroupIds": list(vpc.security_group_ids), "SubnetIds": list(vpc.subnet_ids)}
+    if layers:
+        props["Layers"] = list(layers)
+    if reserved_concurrency is not None:
+        props["ReservedConcurrentExecutions"] = reserved_concurrency
     if environment:
         props["Environment"] = {"Variables": environment}
     if tags:
@@ -151,13 +198,14 @@ def function(
     resources: Resources = {
         log_group: logs.log_group(**logs_props),
         fn: lambda_.function(depends_on=[log_group], **props),
-        version: lambda_.version(deletion_policy="Retain", FunctionName=ref(fn), CodeSha256=code_sha256),
     }
+    if versioned:
+        resources[version] = lambda_.version(deletion_policy="Retain", FunctionName=ref(fn), CodeSha256=code_sha256)
     if log_destination is not None:
         resources[f"{name}LogSubscriptionFilter"] = logs.subscription_filter(
             depends_on=[log_group], LogGroupName=f"/aws/lambda/{name_in_aws}", FilterPattern="", DestinationArn=log_destination,
         )
-    return Function(fn, log_group, version, resources)
+    return Function(fn, log_group, version if versioned else "", resources)
 
 
 def schedule_event(key: str, expression: str, *, number: int = 1, enabled: bool = True) -> Resources:
@@ -201,6 +249,65 @@ def sqs_statement(*queues: str) -> AnyStatement:
     }
 
 
+def sns_event(key: str, topic: str, *, name: str | None = None) -> Resources:
+    """An `sns` event on a topic that is a resource in this template: `{Key}SnsSubscription{Name}` and `{Key}LambdaPermission{Name}SNS`.
+
+    `topic` is the topic's logical ID; `name` is what the framework put in the IDs (the topic's name as the framework
+    normalizes it), which is the logical ID without its `SNSTopic` prefix unless you say so. No role statement is needed.
+    """
+    name = name or topic.removeprefix("SNSTopic")
+    fn = f"{logical(key)}LambdaFunction"
+    return {
+        f"{logical(key)}SnsSubscription{name}": sns.subscription(
+            TopicArn=ref(topic), Protocol="lambda", Endpoint=get_att(fn, "Arn"), Region=ref("AWS::Region"),
+        ),
+        f"{logical(key)}LambdaPermission{name}SNS": lambda_.permission(
+            FunctionName=get_att(fn, "Arn"), Action="lambda:InvokeFunction", Principal="sns.amazonaws.com", SourceArn=ref(topic),
+        ),
+    }
+
+
+def stream_event(
+    key: str,
+    stream: str,
+    *,
+    kind: str = "dynamodb",
+    stream_arn: Expr[str] | None = None,
+    batch_size: int = 10,
+    starting_position: str = "TRIM_HORIZON",
+    enabled: bool = True,
+    name: str | None = None,
+) -> Resources:
+    """A `stream` event: `{Key}EventSourceMapping{Dynamodb|Kinesis}{Name}`. `kind` is `dynamodb` or `kinesis`.
+
+    `stream` is the logical ID of the table or stream in this template, whose `StreamArn` (a table) or `Arn` (a stream) is read, or pass
+    `stream_arn` for anything else. `name` is the suffix the framework used in the ID, `stream` by default. The role needs
+    `stream_statement`.
+    """
+    if kind not in ("dynamodb", "kinesis"):
+        raise ValueError(f"kind is dynamodb or kinesis, not {kind!r}")
+    arn = stream_arn if stream_arn is not None else get_att(stream, "StreamArn" if kind == "dynamodb" else "Arn")
+    return {f"{logical(key)}EventSourceMapping{kind.capitalize()}{name or stream}": lambda_.event_source_mapping(
+        depends_on=ROLE,
+        BatchSize=batch_size,
+        EventSourceArn=arn,
+        FunctionName=get_att(f"{logical(key)}LambdaFunction", "Arn"),
+        StartingPosition=starting_position,
+        Enabled=enabled,
+    )}
+
+
+def stream_statement(kind: str, *stream_arns: Expr[str]) -> AnyStatement:
+    """What the framework adds to the shared role for `stream` events of `kind` (`dynamodb` or `kinesis`), on these stream ARNs. Pass it to `iam_role`."""
+    if kind not in ("dynamodb", "kinesis"):
+        raise ValueError(f"kind is dynamodb or kinesis, not {kind!r}")
+    return {
+        "Effect": "Allow",
+        "Action": [f"{kind}:GetRecords", f"{kind}:GetShardIterator", f"{kind}:DescribeStream", f"{kind}:ListStreams"],
+        "Resource": list(stream_arns),
+    }
+
+
 def path_id(path: str) -> str:
     """A route path as the framework writes it in logical IDs: `/todos/{id}` is `TodosIdVar`, `/` is empty."""
     parts = [part for part in path.split("/") if part]
@@ -215,6 +322,18 @@ class Route:
     method: str
     function: str
     private: bool = False  # `private: true`, an API key is required
+    authorizer: str | None = None  # a key of `rest_api(authorizers=...)`
+
+
+@dataclass(frozen=True)
+class Authorizer:
+    """A custom authorizer on a REST API: a Lambda `function` (a `functions:` key). `type` is `TOKEN` or `REQUEST`."""
+
+    function: str
+    type: str = "TOKEN"
+    identity_source: str = "method.request.header.Authorization"
+    result_ttl: int | None = None
+    validation: str | None = None  # `identityValidationExpression`, TOKEN only
 
 
 def _invocation(fn: str) -> Expr[str]:
@@ -238,15 +357,37 @@ def rest_api(
     deployment_id: str = "",
     endpoint_type: str = "EDGE",
     api_key: bool | None = None,
+    binary_media_types: Sequence[str] = (),
+    authorizers: Mapping[str, Authorizer] | None = None,
 ) -> Resources:
     """`http` events on a REST API: the API, one `ApiGatewayResource…` per path segment, a method for each route and a
     mock `OPTIONS` method per path for CORS, the deployment, and a permission per function.
 
     `deployment_id` is the suffix on `ApiGatewayDeployment` (the framework puts a timestamp there). Routes with
     `private=True` bring the API key, usage plan and usage plan key, unless `api_key=False`.
+
+    `binary_media_types` (`provider.apiGateway.binaryMediaTypes`) goes on the API itself. `authorizers` are custom authorizers by
+    name, and a route that names one gets `AuthorizationType: CUSTOM` and the authorizer's ID; each is `{Name}ApiGatewayAuthorizer`.
+    That shape is the framework's usual one, written from its documentation, not from a template: render it against yours.
     """
     api = "ApiGatewayRestApi"
-    out: Resources = {api: apigateway.rest_api(Name=f"{stage}-{service}", EndpointConfiguration={"Types": [endpoint_type]})}
+    api_props: apigateway.RestApiProps = {"Name": f"{stage}-{service}", "EndpointConfiguration": {"Types": [endpoint_type]}}
+    if binary_media_types:
+        api_props["BinaryMediaTypes"] = list(binary_media_types)
+    out: Resources = {api: apigateway.rest_api(**api_props)}
+    for auth_name, auth in (authorizers or {}).items():
+        auth_props: apigateway.AuthorizerProps = {
+            "AuthorizerUri": _invocation(f"{logical(auth.function)}LambdaFunction"),
+            "IdentitySource": auth.identity_source,
+            "Name": auth_name,
+            "RestApiId": ref(api),
+            "Type": auth.type,
+        }
+        if auth.result_ttl is not None:
+            auth_props["AuthorizerResultTtlInSeconds"] = auth.result_ttl
+        if auth.validation is not None:
+            auth_props["IdentityValidationExpression"] = auth.validation
+        out[f"{logical(auth_name)}ApiGatewayAuthorizer"] = apigateway.authorizer(**auth_props)
     paths = list(dict.fromkeys(route.path for route in routes))
     segments = list(dict.fromkeys(
         "/" + "/".join(parts[: i + 1]) for path in paths for parts in [[p for p in path.split("/") if p]] for i in range(len(parts))
@@ -268,15 +409,23 @@ def rest_api(
         fn = f"{logical(route.function)}LambdaFunction"
         method_id = f"ApiGatewayMethod{path_id(route.path)}{route.method.capitalize()}"
         methods.append(method_id)
+        method_props: apigateway.MethodProps = {
+            "HttpMethod": route.method.upper(),
+            "ResourceId": resource_of(route.path),
+            "RestApiId": ref(api),
+            "ApiKeyRequired": route.private,
+            "AuthorizationType": "NONE",
+            "RequestParameters": {},
+            "MethodResponses": [],
+            "Integration": {"IntegrationHttpMethod": "POST", "Type": "AWS_PROXY", "Uri": _invocation(fn)},
+        }
+        if route.authorizer:
+            if route.authorizer not in (authorizers or {}):
+                raise ValueError(f"route {route.method} {route.path} names the authorizer {route.authorizer!r}, which is not in authorizers=")
+            method_props["AuthorizationType"] = "CUSTOM"
+            method_props["AuthorizerId"] = ref(f"{logical(route.authorizer)}ApiGatewayAuthorizer")
         out[method_id] = apigateway.method(
-            HttpMethod=route.method.upper(),
-            ResourceId=resource_of(route.path),
-            RestApiId=ref(api),
-            ApiKeyRequired=route.private,
-            AuthorizationType="NONE",
-            RequestParameters={},
-            MethodResponses=[],
-            Integration={"IntegrationHttpMethod": "POST", "Type": "AWS_PROXY", "Uri": _invocation(fn)},
+            depends_on=f"{logical(route.authorizer)}ApiGatewayAuthorizer" if route.authorizer else None, **method_props,
         )
     for path in paths:
         verbs = ",".join(["OPTIONS", *(r.method.upper() for r in routes if r.path == path)])
@@ -285,7 +434,8 @@ def rest_api(
         out[options_id] = _cors_options(resource_of(path), verbs)
     deployment = f"ApiGatewayDeployment{deployment_id}"
     out[deployment] = apigateway.deployment(depends_on=methods, RestApiId=ref(api), StageName=stage)
-    for fn in dict.fromkeys(f"{logical(route.function)}LambdaFunction" for route in routes):
+    permitted = [*(route.function for route in routes), *(auth.function for auth in (authorizers or {}).values())]
+    for fn in dict.fromkeys(f"{logical(function)}LambdaFunction" for function in permitted):
         out[f"{fn.removesuffix('LambdaFunction')}LambdaPermissionApiGateway"] = lambda_.permission(
             FunctionName=get_att(fn, "Arn"),
             Action="lambda:InvokeFunction",
@@ -401,13 +551,13 @@ def http_api(name: str, routes: Sequence[HttpRoute], *, authorizers: Mapping[str
     return out
 
 
-def outputs(service: str, stage: str, *functions: Function) -> dict[str, Output]:
-    """The outputs the framework adds: the bucket name, and each function's current version."""
+def outputs(service: str, stage: str, *functions: Function, bucket: str | None = None) -> dict[str, Output]:
+    """The outputs the framework adds: the bucket name (`bucket` is the name of a `deploymentBucket` that is not in the template), and each versioned function's current version."""
     prefix = f"sls-{service}-{stage}"
     out: dict[str, Output] = {
-        f"{BUCKET}Name": {"Value": ref(BUCKET), "Export": {"Name": f"{prefix}-{BUCKET}Name"}},
+        f"{BUCKET}Name": {"Value": ref(BUCKET) if bucket is None else bucket, "Export": {"Name": f"{prefix}-{BUCKET}Name"}},
     }
-    for fn in functions:
+    for fn in (f for f in functions if f.version):
         name = fn.function.removesuffix("LambdaFunction")
         out[f"{name}LambdaFunctionQualifiedArn"] = {
             "Description": "Current Lambda function version",

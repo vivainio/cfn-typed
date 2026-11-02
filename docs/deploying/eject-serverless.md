@@ -24,6 +24,81 @@ changing it from there. The example is made up: a `ledger` service with one sche
 `original.json` is written the way `sls package` writes one, with the framework's names, but it did not come from a real run
 and nothing in it is from a real account.
 
+## Where it goes
+
+A Serverless service is one repository, and it keeps its infrastructure in a `cfn/` directory next to `serverless.yml`, in the
+layout of [a typical project](../project-layout.md). The ejection adds to it as you go:
+
+```text
+my-service/                         # the repository that had serverless.yml
+  serverless.yml                    # stays until the ejected stack has deployed with an empty change set; then delete it
+  src/                              # the application, and the build step that makes the zip (it stays outside cfn/)
+  cfn/
+    cfn-typegen.toml                # the types the service uses: `cfn-typegen --template original.json` lists them
+    cfn_types/                      # generated, so it is gitignored (or committed, for a handful of types)
+    patterns/
+      sls.py                        # only after you drop the sumo dependency; until then it is `from cfn_typed_sumo import sls`
+    stacks/
+      ledger.py                     # the imported module, tidied: build(settings) -> cfn.Template
+    main.py                         # cli.main({"ledger": StackSpec(build, out=..., stack_name=...)}, settings=Settings)
+    originals/                      # scratch, gitignored: what each stage had when you ejected (dev.json, prod.json), fetched with get-template
+    tests/
+      test_ejection.py              # build(stage) == the original, for each stage
+    rendered/
+      ledger-dev.yaml               # one per stage, committed: the files that are reviewed and deployed, and the permanent pin
+      ledger-prod.yaml
+    pyproject.toml
+```
+
+Three decisions in it:
+
+- **One original per stage.** A service deployed to `dev` and `prod` has two templates that differ in their values, and `STAGE` is
+  an argument of `build`. The test pins each stage, so a stage you have not ejected yet is not blocked by one you have. The `parametrize` list in
+  the test is the stages that are ejected.
+- **The originals are scratch, `rendered/` is the pin.** `originals/` is for the ejection: fetch each stage with
+  `aws cloudformation get-template --stack-name NAME-STAGE --template-stage Original`, keep the directory in `.gitignore`, and let the test skip
+  when a file is absent, so it runs everywhere and bites where the files are (a CI job with read access fetches them first). Once the
+  test passes, `rendered/ledger-dev.yaml` *is* the original in a different format, and from then on the golden-file test
+  ([testing](../testing.md)) is what pins it: `assert_matches_file` in the test (below) fails on any change, and `CFN_TYPED_UPDATE=1` writes the file.
+  Both hold the same values (bucket names, ARNs, sometimes an account ID inside an ARN), so what you may commit is the same for both: in a private
+  repository, the rendered files; in a public one, replace the identifying values first, as the made-up `original.json` here does.
+- **`serverless.yml` goes last.** Keep it, and keep deploying with it, until the new stack has deployed once with an empty change set. Then delete it, the
+  `package.json` of its plugins, and the deploy script's `sls` lines, in a commit of their own.
+
+The test is short:
+
+```python
+# cfn/tests/test_ejection.py
+import json
+from pathlib import Path
+
+import pytest
+
+from cfn_typed.testing import assert_matches_file
+from main import Settings
+from stacks.ledger import build
+
+CFN = Path(__file__).parent.parent
+STAGES = ["dev", "prod"]  # the stages that are ejected
+
+
+@pytest.mark.parametrize("stage", STAGES)
+def test_the_stack_renders_what_is_deployed(stage: str) -> None:
+    original = CFN / "originals" / f"{stage}.json"
+    if not original.exists():
+        pytest.skip(f"no {original}: fetch it with get-template (see the ejecting guide)")
+    assert build(Settings(stage=stage)) == json.loads(original.read_text())
+
+
+@pytest.mark.parametrize("stage", STAGES)
+def test_the_rendered_file_is_committed(stage: str) -> None:
+    assert_matches_file(build(Settings(stage=stage)), CFN / "rendered" / f"ledger-{stage}.yaml")  # CFN_TYPED_UPDATE=1 writes it
+```
+
+and `main.py` is the [command line](../cli.md#settings-a-dataclass-whose-fields-are-flags) with `stage` as a flag, so `python main.py emit ledger --stage prod`
+renders one stage (`-o rendered/ledger-prod.yaml` writes it) and `python main.py check ledger --stage prod --live --stack-name ledger-prod` checks it against the running stack.
+Once the stack is ejected, `--deployed` is the same check as the test, against the live template, and does not need the originals at all.
+
 ## Take the template
 
 ```text

@@ -1,6 +1,7 @@
 from typing import Any
 
 import pytest
+from pathlib import Path
 
 from cfn_typed import typegen as gen
 
@@ -361,3 +362,41 @@ def test_sam_resources_take_connectors_and_ignore_globals_and_leave_getatt_unche
     assert fn["Connectors"] == {"ToQueue": {"Properties": {}}} and fn["IgnoreGlobals"] == ["Timeout"]
     assert "Connectors" not in ns["function"](Handler="h")
     assert ns["ATTRIBUTES"] == {}  # no entry: GetAtt on a SAM resource is not checked
+
+
+def test_s3_schemas_are_copied_with_the_aws_cli(tmp_path, monkeypatch):
+    monkeypatch.setattr(gen, "CACHE", tmp_path / "cache" / "CloudformationSchema.zip")
+    calls = []
+
+    def fake_run(cmd, check):
+        calls.append(cmd)
+        Path(cmd[4]).write_bytes(b"zip")
+
+    monkeypatch.setattr(gen.subprocess, "run", fake_run)
+    got = gen.ensure_schemas("s3://bkt/schemas/x.zip")
+    assert got == tmp_path / "cache" / "s3" / "bkt" / "schemas" / "x.zip" and got.read_bytes() == b"zip"
+    assert calls[0][:4] == ["aws", "s3", "cp", "s3://bkt/schemas/x.zip"]
+    gen.ensure_schemas("s3://bkt/schemas/x.zip")        # cached: no second copy
+    assert len(calls) == 1
+    gen.ensure_schemas("s3://bkt/schemas/x.zip", refresh=True)
+    assert len(calls) == 2
+
+
+def test_install_schema_replaces_the_default(tmp_path, monkeypatch):
+    import zipfile
+    monkeypatch.setattr(gen, "CACHE", tmp_path / "cache" / "CloudformationSchema.zip")
+    src = tmp_path / "new.zip"
+    with zipfile.ZipFile(src, "w") as zf:
+        zf.writestr("a.json", "{}")
+
+    calls = []
+
+    def fake_run(cmd, check):
+        calls.append(cmd)
+        Path(cmd[4]).write_bytes(src.read_bytes())
+
+    monkeypatch.setattr(gen.subprocess, "run", fake_run)
+    assert gen.install_schema("s3://bkt/x.zip", profile="prod") == gen.CACHE
+    assert calls[-1][-2:] == ["--profile", "prod"]
+    assert gen.CACHE.read_bytes() == src.read_bytes()
+    assert gen.ensure_schemas() == gen.CACHE            # now the default

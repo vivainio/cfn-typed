@@ -12,7 +12,10 @@ cfn-typegen --out cfn_types --no-docs AWS::SQS::Queue     # without description 
 
 Type names are case-insensitive globs and an unmatched name is an error. The
 schema zip is downloaded once into `~/.cache/cfn-typegen/` and reused; `--schemas` points at
-a local copy. A rerun replaces only files it generated earlier.
+a local copy, or at an `s3://bucket/key` zip, which is copied with the `aws` CLI (so it needs the CLI and
+credentials) into the same cache and reused until `--refresh`.
+`cfn-typegen install-schema [--profile NAME] s3://bucket/key` copies such a zip over the default cached one, so later
+runs use it without `--schemas` (give a local path, or nothing for AWS's URL, to do the same). A rerun replaces only files it generated earlier.
 
 `--no-docs` leaves out the description docstrings (the first sentence of each property's
 AWS documentation). The types are identical; the output is about 30% smaller.

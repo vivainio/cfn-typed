@@ -8,6 +8,7 @@
     cfn-typegen --out cfn_types --sam v1.116.0 'AWS::Serverless::*'  # AWS SAM's types, from a pinned release
     cfn-typegen search load balancer                               # find type names
     cfn-typegen --refresh --out cfn_types AWS::SQS::Queue          # re-download the schemas first
+    cfn-typegen install-schema s3://BUCKET/KEY                     # make a zip the default schema
 
 Type names are case-insensitive globs. The schema zip is downloaded once into
 ~/.cache/cfn-typegen/, or pass --schemas to use a local CloudformationSchema.zip.
@@ -28,6 +29,7 @@ import keyword
 import os
 import shutil
 import re
+import subprocess
 import sys
 import tomllib
 import urllib.request
@@ -510,14 +512,32 @@ def render_module(title: str, schemas: list[Schema], docs: bool = True, stamp: s
     return head + "\n\n" + body + "\n"
 
 
-def ensure_schemas(path: Path, refresh: bool = False) -> Path:
-    """Return `path`, downloading the schema zip there first if it is missing (or `refresh`)."""
+def ensure_schemas(source: Path | str | None = None, refresh: bool = False, profile: str | None = None) -> Path:
+    """Return a local schema zip, fetching it first if it is missing (or `refresh`).
+
+    `source` is a local path, an `s3://bucket/key` URI (fetched with the `aws` CLI into the cache), or None
+    for the default: AWS's public URL, cached in `CACHE`.
+    """
+    if isinstance(source, str) and source.startswith("s3://"):
+        path = CACHE.parent / "s3" / source.removeprefix("s3://")
+        fetch = ["aws", "s3", "cp", source]
+        label = source
+    else:
+        path = CACHE if source is None else Path(source)
+        fetch = None
+        label = SCHEMA_URL
     if refresh or not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"downloading {SCHEMA_URL}")
+        print(f"downloading {label}")
         partial = path.with_name(path.name + ".part")  # a failed download must not clobber a good cache
         try:
-            urllib.request.urlretrieve(SCHEMA_URL, partial)
+            if fetch:
+                try:
+                    subprocess.run([*fetch, str(partial), "--only-show-errors", *(["--profile", profile] if profile else [])], check=True)
+                except FileNotFoundError:
+                    raise SystemExit("fetching an s3:// schema needs the `aws` CLI on PATH") from None
+            else:
+                urllib.request.urlretrieve(SCHEMA_URL, partial)
             os.replace(partial, path)
         except BaseException:
             partial.unlink(missing_ok=True)
@@ -602,7 +622,7 @@ def search_main(argv: list[str]) -> None:
     )
     ap.add_argument("terms", nargs="+", help="words that must all match, e.g. load balancer")
     ap.add_argument("--limit", type=int, default=20, help="most results to show (default 20)")
-    ap.add_argument("--schemas", type=Path, default=CACHE, help="CloudformationSchema.zip (downloaded if missing)")
+    ap.add_argument("--schemas", help="CloudformationSchema.zip: a local path or s3://bucket/key (default: AWS's public URL, cached)")
     ap.add_argument("--refresh", action="store_true", help="download the schemas again, picking up new AWS resources")
     args = ap.parse_args(argv)
 
@@ -633,15 +653,39 @@ def load_config(path: Path) -> dict[str, Any]:
     return config
 
 
+def install_schema(source: Path | str | None = None, profile: str | None = None) -> Path:
+    """Make `source` (s3:// URI, local zip, or None for AWS's URL) the default schema zip in `CACHE`."""
+    got = ensure_schemas(source, refresh=True, profile=profile)
+    if got != CACHE:
+        partial = CACHE.with_name(CACHE.name + ".part")
+        shutil.copyfile(got, partial)
+        os.replace(partial, CACHE)
+    load_schemas(CACHE)  # fail now, not on first use, if it is not a schema zip
+    return CACHE
+
+
+def install_schema_main(argv: list[str]) -> None:
+    ap = argparse.ArgumentParser(
+        prog="cfn-typegen install-schema",
+        description="Download a schema zip and make it the default one, used when --schemas is not given.",
+    )
+    ap.add_argument("source", nargs="?", help="s3://bucket/key or a local CloudformationSchema.zip (default: AWS's public URL)")
+    ap.add_argument("--profile", help="AWS profile for an s3:// source (default: the usual AWS CLI resolution)")
+    args = ap.parse_args(argv)
+    print(f"installed {schema_stamp(install_schema(args.source, args.profile))} at {CACHE}")
+
+
 def main(argv: list[str] | None = None) -> None:
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["search"]:
         return search_main(argv[1:])
+    if argv[:1] == ["install-schema"]:
+        return install_schema_main(argv[1:])
     if argv[:1] == ["init-repo"]:
         from cfn_typed.scaffold import init_repo_main
 
         return init_repo_main(argv[1:])
-    ap = argparse.ArgumentParser(prog="cfn-typegen", description="Generate typed CloudFormation resource modules.", epilog="Not sure of a type name? Run: cfn-typegen search WORD...\nStarting a package of generated types? Run: cfn-typegen init-repo NAME")
+    ap = argparse.ArgumentParser(prog="cfn-typegen", description="Generate typed CloudFormation resource modules.", epilog="Not sure of a type name? Run: cfn-typegen search WORD...\nStarting a package of generated types? Run: cfn-typegen init-repo NAME\nPin the default schema? Run: cfn-typegen install-schema s3://BUCKET/KEY")
     ap.add_argument("types", nargs="*", help="resource types or globs, e.g. AWS::SQS::Queue or 'AWS::Lambda::*'")
     ap.add_argument("--config", type=Path, help="TOML file with out, types, all, templates, docs, schemas (default: ./cfn-typegen.toml if present)")
     ap.add_argument("--out", type=Path, help="directory to write the modules into (default: `out` in the config file)")
@@ -650,7 +694,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--no-docs", action="store_true", help="leave the description docstrings out (much smaller output)")
     ap.add_argument("--no-constraints", action="store_true", help="leave out the CONSTRAINTS, ATTRIBUTES and RULES tables that the template checks read (smaller output)")
     ap.add_argument("--literal-enums", action="store_true", help="type properties that have a fixed set of values as Literal[...]; AWS adding a value is a type error until you regenerate")
-    ap.add_argument("--schemas", type=Path, default=CACHE, help="CloudformationSchema.zip (downloaded if missing)")
+    ap.add_argument("--schemas", help="CloudformationSchema.zip: a local path or s3://bucket/key (default: AWS's public URL, cached)")
     ap.add_argument("--refresh", action="store_true", help="download the schemas again, picking up new AWS resources")
     ap.add_argument("--sam", metavar="TAG", help="also generate AWS::Serverless::* from this SAM release, e.g. v1.116.0 (or `sam` in the config file)")
     args = ap.parse_args(argv)
@@ -669,7 +713,7 @@ def main(argv: list[str] | None = None) -> None:
     if not patterns and not everything:
         ap.error("name resource types, pass --template, use --all, or list `types` in the config file")
     docs = not args.no_docs and config.get("docs", True)
-    zip_path = ensure_schemas(args.schemas if args.schemas != CACHE or "schemas" not in config else Path(config["schemas"]), args.refresh)
+    zip_path = ensure_schemas(args.schemas or config.get("schemas"), args.refresh)
     schemas = load_schemas(zip_path)
     stamp = schema_stamp(zip_path)
     if sam := args.sam or config.get("sam"):

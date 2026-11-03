@@ -37,6 +37,17 @@ jobs:
       - name: Run tests
         run: uv run pytest tests/ packages/sumo/tests/ -v
 
+      - name: Golden files are committed
+        # the golden tests compare against these files and never write them in CI; this catches a golden left
+        # uncommitted or a test run that rewrote one. Fix: CFN_TYPED_UPDATE=1 uv run pytest tests/, review, commit.
+        run: |
+          if [ -n "$(git status --porcelain -- tests/golden examples/rendered)" ]; then
+            git status --short -- tests/golden examples/rendered
+            git diff -- tests/golden examples/rendered | head -100
+            echo "::error::golden files differ from what is committed"
+            exit 1
+          fi
+
       - name: Lint the rendered examples with cfn-lint
         # the version is pinned in the dev group of pyproject.toml; errors fail the build, warnings are printed only
         run: uv run cfn-lint --non-zero-exit-code error examples/rendered/*.yaml examples/reference/cfn/rendered/*.yaml examples/reference/cfn/rendered/*/*.yaml

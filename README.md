@@ -15,7 +15,7 @@ pattern helpers (a Lambda role, a queue with its dead-letter queue, ...) and a
 reference page per resource. Install from [PyPI](https://pypi.org/project/cfn-typed/):
 `uv add cfn-typed`.
 
-**Using a coding agent?** Give it the [agent quickstart](https://github.com/vivainio/cfn-typed/blob/main/agent-quickstart.md): one markdown page of the patterns
+**Using a coding agent?** Give it the [agent quickstart](https://vivainio.github.io/cfn-typed/agent-quickstart.md): one markdown page of the patterns
 to adopt and the rules to follow.
 
 ```python

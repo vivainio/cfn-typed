@@ -1,7 +1,7 @@
 # Getting started
 
 !!! tip "Using a coding agent?"
-    Give it the [agent quickstart](https://raw.githubusercontent.com/vivainio/cfn-typed/main/agent-quickstart.md), a
+    Give it the [agent quickstart](https://vivainio.github.io/cfn-typed/agent-quickstart.md), a
     single markdown page of the patterns to adopt and the rules to follow.
 
 ## Install

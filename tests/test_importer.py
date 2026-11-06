@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from cfn_typed import importer, typegen
-from cfn_typed.cli import main
+from cfn_typed.cli import load_template as cfn_load, main
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sls-package.json"
 
@@ -104,3 +104,16 @@ def test_asl_leave_a_literal_string_literal() -> None:
 def test_asl_leave_what_they_cannot_read(definition) -> None:
     template = machine_template(definition)
     assert importer.structure_state_machines(template) == template
+
+
+def test_template_types_reads_yaml_with_short_form_intrinsics(tmp_path) -> None:
+    path = tmp_path / "t.yaml"
+    path.write_text("AWSTemplateFormatVersion: 2010-09-09\nResources:\n  Q:\n    Type: AWS::SQS::Queue\n    Properties:\n      QueueName: !Sub ${AWS::StackName}-q\n  C:\n    Type: Custom::Thing\n")
+    assert typegen.template_types(path) == ["AWS::SQS::Queue"]
+
+
+def test_import_of_yaml_with_a_date_writes_a_string(tmp_path) -> None:
+    path = tmp_path / "t.yaml"
+    path.write_text("AWSTemplateFormatVersion: 2010-09-09\nResources:\n  Q:\n    Type: AWS::SQS::Queue\n")
+    source = importer.to_python(cfn_load(path))
+    assert "datetime" not in source and "2010-09-09" in source

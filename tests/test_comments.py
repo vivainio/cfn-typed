@@ -119,3 +119,10 @@ def test_a_triple_quoted_note_is_dedented_but_keeps_its_relative_indent() -> Non
     """)})
     assert text == "# Receives order events.\n#   indented example\n# Owner: orders.\nA: 1\n"
     assert cfn.to_yaml({"A": 1 @ cfn.note("a\n    b")}) == "# a\n#     b\nA: 1\n"
+
+
+def test_unquoted_dates_stay_strings() -> None:
+    assert parse_template("AWSTemplateFormatVersion: 2010-09-09\nPolicy:\n  Version: 2012-10-17\n") == {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Policy": {"Version": "2012-10-17"},
+    }

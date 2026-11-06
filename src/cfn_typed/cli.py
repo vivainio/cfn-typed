@@ -127,6 +127,7 @@ def parse_template(text: str, *, json_file: bool = False) -> dict[str, Any]:
         pass
 
     Constructor.add_multi_constructor("!", _short_form)
+    Constructor.add_constructor("tag:yaml.org,2002:timestamp", lambda loader, node: loader.construct_scalar(node))  # `Version: 2012-10-17` is a string to CloudFormation, not a date
     yaml = YAML(typ="safe", pure=True)
     yaml.Constructor = Constructor
     yaml.version = (1, 1)  # CloudFormation's reading: `yes` and `On` are booleans

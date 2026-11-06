@@ -556,7 +556,9 @@ def load_schemas(zip_path: Path) -> list[Schema]:
 
 
 def template_types(path: Path) -> list[str]:
-    resources = json.loads(path.read_text()).get("Resources", {})
+    from cfn_typed.cli import load_template  # JSON, or YAML with the short-form intrinsics
+
+    resources = load_template(path).get("Resources", {})
     return sorted({r["Type"] for r in resources.values() if "Type" in r and not r["Type"].startswith("Custom::")})  # no schema for a custom resource
 
 
@@ -689,7 +691,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("types", nargs="*", help="resource types or globs, e.g. AWS::SQS::Queue or 'AWS::Lambda::*'")
     ap.add_argument("--config", type=Path, help="TOML file with out, types, all, templates, docs, schemas (default: ./cfn-typegen.toml if present)")
     ap.add_argument("--out", type=Path, help="directory to write the modules into (default: `out` in the config file)")
-    ap.add_argument("--template", type=Path, action="append", default=[], help="JSON template; emit the types it uses")
+    ap.add_argument("--template", type=Path, action="append", default=[], help="JSON or YAML template; emit the types it uses")
     ap.add_argument("--all", action="store_true", help="emit every resource type")
     ap.add_argument("--no-docs", action="store_true", help="leave the description docstrings out (much smaller output)")
     ap.add_argument("--no-constraints", action="store_true", help="leave out the CONSTRAINTS, ATTRIBUTES and RULES tables that the template checks read (smaller output)")

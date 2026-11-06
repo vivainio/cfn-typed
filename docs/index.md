@@ -91,6 +91,11 @@ are different trade-offs: here the generated shapes never carry a decision, and 
     Plain functions that return a resource or a small fragment of several. The
     book's main subject.
 
+- :lucide-bot: **[Agent quickstart](https://raw.githubusercontent.com/vivainio/cfn-typed/main/agent-quickstart.md)**
+
+    One markdown page of the patterns to adopt and the rules to follow, written to be handed straight
+    to a coding agent.
+
 - :lucide-file-text: **[Rendered examples](rendered/index.md)**
 
     The YAML each example produces, committed and checked by CI.

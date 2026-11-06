@@ -59,9 +59,15 @@ statement is an identity-policy statement, where the principal is whoever the po
 
 ## Conditions
 
+The [conditions chapter](conditions.md) covers building them in full: recipes, qualifiers, and what the template check
+catches. In short:
+
 `condition(operator, key, values)` builds one condition, and the common operators have shorthands:
 `string_equals`, `string_not_equals`, `string_like`, `string_not_like`, `arn_equals`, `arn_like`, `bool_` and
-`ip_address`.
+`ip_address`. The rest are there too: `string_equals_ignore_case`, `string_not_equals_ignore_case`, `arn_not_equals`,
+`arn_not_like`, `not_ip_address`, `binary_equals`, `null`, and the `numeric_*` and `date_*` comparisons
+(`numeric_less_than`, `date_greater_than_equals`, ...). A date is a timezone-aware `datetime`, written as UTC
+ISO 8601, or a string such as an epoch.
 
 ```python
 from cfn_typed.policy import GlobalKeys, arn_like, string_not_like

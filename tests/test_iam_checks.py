@@ -14,8 +14,8 @@ def template(*statements: dict[str, Any]) -> dict[str, Any]:
     }}
 
 
-def allow(action: Any, resource: Any = "*") -> dict[str, Any]:
-    return {"Effect": "Allow", "Action": action, "Resource": resource}
+def allow(action: Any, resource: Any = "*", condition: Any = None) -> dict[str, Any]:
+    return {"Effect": "Allow", "Action": action, "Resource": resource} | ({} if condition is None else {"Condition": condition})
 
 
 def test_the_known_actions_are_read_from_permissions() -> None:
@@ -61,3 +61,54 @@ def test_s3_object_and_bucket_arns_are_told_apart() -> None:
 def test_resource_policies_and_single_statements_are_read_too() -> None:
     t = {"Resources": {"Queue": {"Type": "AWS::SQS::Queue"}, "QP": {"Type": "AWS::SQS::QueuePolicy", "Properties": {"PolicyDocument": {"Statement": allow("sqs:SendMesage")}}}}}
     assert len(find_iam_problems(t)) == 1
+
+
+def test_good_conditions_are_quiet() -> None:
+    like = {"StringLike": {"s3:prefix": ["clusters/abc/*"]}}
+    t = template(
+        allow("s3:ListBucket", "*", like),
+        allow(["s3:ListBucket", "s3:GetObject"], "*", like),  # one action of the service takes the key
+        allow("s3:*", "*", like), allow("*", "*", like), allow("s3:List*", "*", like),
+        allow("s3:PutObject", "*", {"StringEquals": {"s3:x-amz-acl": "private"}, "ForAnyValue:StringLike": {"s3:RequestObjectTagKeys": "a*"}}),
+        allow("s3:GetObject", "*", {"StringEquals": {"s3:ExistingObjectTag/Project": "x", "S3:ResourceAccount": "1"}}),  # `<key>` is any name; case does not matter
+        allow("s3:GetObject", "*", {"StringEqualsIfExists": {"aws:PrincipalTag/team": "x"}, "Null": {"s3:authType": "false"}, "IpAddress": {"aws:SourceIp": "10.0.0.0/8"}}),
+        allow("sqs:SendMessage", "*", {"ArnLikeIfExists": {"aws:SourceArn": "arn:*"}, "NumericLessThanEquals": {"s3:max-keys": 5}, "DateGreaterThan": {"aws:CurrentTime": "2030-01-01"}}),
+        allow("ec2:DescribeInstances", "*", like),  # no s3 action in the statement: nothing to compare with
+        {"Effect": "Deny", "NotAction": "s3:GetObject", "Resource": "*", "Condition": like},
+        allow("s3:GetObject", "*", {"StringEquals": {"foo:Bar": "x"}}),  # a service without condition keys here is left alone
+        allow(["s3:ListBucket"], "*", {"StringLike": {"s3:prefix": [sub("clusters/${AWS::Region}/*")]}}),
+    )
+    assert find_iam_problems(t) == []
+
+
+def test_unknown_operators_effects_and_condition_keys() -> None:
+    p = find_iam_problems(template(
+        allow("s3:ListBucket", "*", {"StringLik": {"s3:prefix": "a"}, "ForAnyValue:StringEqualz": {"s3:prefix": "a"}, "NullIfExists": {"s3:prefix": "true"}}),
+        allow("s3:ListBucket", "*", {"StringLike": {"s3:prefx": "a"}}),
+        allow("sqs:SendMessage", "*", {"StringEquals": {"sqs:Anything": "a"}}),
+        allow("kms:Decrypt", "*", {"StringEquals": {"kms:ViaServic": "s3.eu-west-1.amazonaws.com"}}),
+        {"Effect": "Alow", "Action": "sqs:SendMessage", "Resource": "*"},
+    ))
+    base = "Resources.Policy.Properties.PolicyDocument.Statement"
+    assert p == [
+        f"{base}[0].Condition: 'StringLik' is not a condition operator (did you mean 'StringLike'?)",
+        f"{base}[0].Condition: 'ForAnyValue:StringEqualz' is not a condition operator (did you mean 'StringEquals'?)",
+        f"{base}[0].Condition: 'NullIfExists' is not a condition operator (did you mean 'Null'?)",
+        f"{base}[1].Condition.StringLike: 's3:prefx' is not a known s3 condition key (did you mean 's3:prefix'?)",
+        f"{base}[2].Condition.StringEquals: 'sqs:Anything' is not a known sqs condition key",
+        f"{base}[3].Condition.StringEquals: 'kms:ViaServic' is not a known kms condition key (did you mean 'kms:ViaService'?)",
+        f"{base}[4].Effect: 'Alow' is not 'Allow' or 'Deny'",
+    ]
+
+
+def test_a_condition_key_that_the_actions_do_not_take_is_reported() -> None:
+    p = find_iam_problems(template(
+        allow(["s3:GetObject", "s3:PutObject"], "*", {"StringLike": {"s3:prefix": "a/*"}}),
+        allow("s3:Get*", "*", {"StringLike": {"S3:Delimiter": "/"}}),
+    ))
+    base = "Resources.Policy.Properties.PolicyDocument.Statement"
+    assert len(p) == 2
+    assert p[0].startswith(f"{base}[0].Condition.StringLike: 's3:prefix' is not a condition key of any s3 action in the statement; it is for s3:ListBucket")
+    assert "'S3:Delimiter'" in p[1] and "s3:ListBucket" in p[1]
+    with pytest.raises(AssertionError, match="IAM statements"):
+        assert_iam_valid(template(allow("s3:GetObject", "*", {"StringLike": {"s3:prefix": "a"}})))

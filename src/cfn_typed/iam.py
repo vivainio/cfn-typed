@@ -1,4 +1,4 @@
-"""Check the IAM statements in a finished template against the action names `cfn_typed.permissions` carries.
+"""Check the IAM statements in a finished template against the action names `cfn_typed.permissions` carries, and its condition keys.
 
     problems = find_iam_problems(template)   # [] when every statement looks right
 
@@ -14,16 +14,27 @@ any other service is left alone.
 - S3 only: an object action (`s3:GetObject`) whose `Resource` is only the bucket ARN, which matches no object, or a bucket
   action (`s3:ListBucket`) whose `Resource` is only `{bucket arn}/...`, which matches no bucket.
 
-Not checked: `NotAction`, actions or resources that are themselves intrinsics, and whether a policy grants too much.
+- an `Effect` that is not `Allow` or `Deny`;
+- a `Condition` operator that does not exist (`StringLik`; the `ForAllValues:` and `ForAnyValue:` prefixes and the `IfExists`
+  suffix are understood);
+- a condition key of one of those services that does not exist (`s3:prefx`), or that none of the statement's actions of that
+  service supports (`s3:prefix` beside `s3:GetObject`: it is a `ListBucket` key). The keys come from AWS's Service
+  Authorization Reference, see `scripts/sync-condition-keys.py`. Global `aws:` keys, keys of other services and keys
+  that are themselves intrinsics are left alone.
+
+Not checked: `NotAction`, actions or resources that are themselves intrinsics, the values of a condition, and whether a policy
+grants too much.
 """
 
 import difflib
 import fnmatch
+import functools
 import re
 from collections.abc import Iterator, Mapping
 from typing import Any
 
 from cfn_typed import permissions
+from cfn_typed._condition_keys import CONDITION_KEYS
 
 _SUB_VAR = re.compile(r"\$\{([^}!][^}]*)\}")
 
@@ -43,6 +54,15 @@ def _known() -> dict[str, list[str]]:
 
 
 KNOWN = _known()
+
+
+EFFECTS = ("Allow", "Deny")
+OPERATORS = (
+    *(f"String{op}" for op in ("Equals", "NotEquals", "EqualsIgnoreCase", "NotEqualsIgnoreCase", "Like", "NotLike")),
+    *(f"{kind}{op}" for kind in ("Numeric", "Date") for op in ("Equals", "NotEquals", "LessThan", "LessThanEquals", "GreaterThan", "GreaterThanEquals")),
+    "Bool", "BinaryEquals", "IpAddress", "NotIpAddress", "ArnEquals", "ArnLike", "ArnNotEquals", "ArnNotLike", "Null",
+)  # fmt: skip
+SET_PREFIXES = ("forallvalues:", "foranyvalue:")
 
 
 def _listed(value: Any) -> list[Any]:
@@ -95,6 +115,10 @@ def _level(expr: Any, resources: Mapping[str, Any]) -> str | None:
 
 
 def _statement(stmt: Mapping[str, Any], path: str, resources: Mapping[str, Any], out: list[str]) -> None:
+    effect = stmt.get("Effect")
+    if isinstance(effect, str) and effect not in EFFECTS:
+        out.append(f"{path}.Effect: {effect!r} is not 'Allow' or 'Deny'")
+    _condition(stmt, path, out)
     actions = [a for a in _listed(stmt.get("Action")) if isinstance(a, str) and ":" in a]
     prefixes = {a.split(":")[0].lower() for a in actions}
     for action in actions:
@@ -123,6 +147,90 @@ def _statement(stmt: Mapping[str, Any], path: str, resources: Mapping[str, Any],
             out.append(f"{path}.Resource: {sorted(s3 & S3_OBJECT)[0]!r} applies to objects, but Resource is only the bucket ARN: add '/*'")
         if levels == {"object"} and s3 & S3_BUCKET:
             out.append(f"{path}.Resource: {sorted(s3 & S3_BUCKET)[0]!r} applies to the bucket, but Resource is only objects: add the bucket ARN itself")
+
+
+def _operator(operator: str) -> str | None:
+    """The problem with a condition operator, or None. Names are case-insensitive, as the rest of the checks treat them."""
+    base = operator.lower()
+    for prefix in SET_PREFIXES:
+        base = base.removeprefix(prefix)
+    if base.endswith("ifexists") and base != "nullifexists":  # `Null` has no IfExists form
+        base = base.removesuffix("ifexists")
+    if base in {o.lower() for o in OPERATORS}:
+        return None
+    close = difflib.get_close_matches(operator.split(":")[-1].removesuffix("IfExists"), OPERATORS, n=1)
+    return f" (did you mean '{close[0]}'?)" if close else ""
+
+
+_PLACEHOLDER = re.compile(r"<[^>]*>|\$\{[^}]*\}")
+
+
+def _regex(name: str) -> re.Pattern[str]:
+    """A condition key as a regex: `<key>` and `${TagKey}` match any name, the rest is literal and case-insensitive."""
+    parts: list[str] = []
+    last = 0
+    for m in _PLACEHOLDER.finditer(name):
+        parts += [re.escape(name[last : m.start()]), ".+"]
+        last = m.end()
+    return re.compile("".join([*parts, re.escape(name[last:])]) + "$", re.IGNORECASE)
+
+
+@functools.cache
+def _patterns(service: str) -> list[tuple[str, re.Pattern[str], int]]:
+    """Every condition key of the service as (name, regex, index into its keys)."""
+    return [(name, _regex(name), i) for i, name in enumerate(CONDITION_KEYS[service][0])]
+
+
+def _supported(service: str, actions: list[str]) -> set[int] | None:
+    """The indexes of the service's condition keys that any of the statement's actions of that service supports.
+
+    None when the statement says something this cannot resolve (an action that is an intrinsic, `NotAction`) or has no
+    action of the service at all, so there is nothing to compare with."""
+    _, per_action = CONDITION_KEYS[service]
+    known = KNOWN.get(service, [])
+    matched: set[str] = set()
+    for action in actions:
+        if action == "*":
+            matched |= set(known)
+            continue
+        prefix, _, name = action.partition(":")
+        if fnmatch.fnmatchcase(service, prefix.lower()):
+            matched |= {n for n in known if fnmatch.fnmatchcase(n.lower(), name.lower())}
+    if not matched:
+        return None
+    return {i for n in matched for i in per_action.get(n, ())}
+
+
+def _condition(stmt: Mapping[str, Any], path: str, out: list[str]) -> None:
+    condition = stmt.get("Condition")
+    if not isinstance(condition, Mapping):
+        return
+    raw = _listed(stmt.get("Action"))
+    resolvable = "NotAction" not in stmt and all(isinstance(a, str) for a in raw)
+    actions = [a for a in raw if isinstance(a, str)] if resolvable else []
+    for operator, body in condition.items():
+        if isinstance(operator, str) and (hint := _operator(operator)) is not None:
+            out.append(f"{path}.Condition: {operator!r} is not a condition operator{hint}")
+        if not isinstance(body, Mapping):
+            continue
+        for key in body:
+            service = key.split(":")[0].lower() if isinstance(key, str) and ":" in key else ""
+            if service not in CONDITION_KEYS:
+                continue
+            found = [(name, i) for name, rx, i in _patterns(service) if rx.match(key)]
+            where = f"{path}.Condition.{operator}"
+            if not found:
+                names = [n for n, _, _ in _patterns(service)]
+                close = difflib.get_close_matches(key, names, n=1, cutoff=0.7)
+                hint = f" (did you mean {close[0]!r}?)" if close else ""
+                out.append(f"{where}: {key!r} is not a known {service} condition key{hint}")
+                continue
+            supported = _supported(service, actions) if resolvable else None
+            if supported is not None and not any(i in supported for _, i in found):
+                _, per_action = CONDITION_KEYS[service]
+                users = sorted(a for a, ix in per_action.items() if any(i in ix for _, i in found))
+                shown = ", ".join(f"{service}:{a}" for a in users[:4]) + (", ..." if len(users) > 4 else "")
+                out.append(f"{where}: {key!r} is not a condition key of any {service} action in the statement; it is for {shown}")
 
 
 def _walk(node: Any, path: str, resources: Mapping[str, Any], out: list[str]) -> None:

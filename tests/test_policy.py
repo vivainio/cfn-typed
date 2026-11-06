@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 
 import pytest
@@ -5,7 +6,9 @@ import pytest
 import cfn_typed as cfn
 from cfn_typed import NotActionStatement, Statement, allow, assume_role_policy, deny, grants, policy_document
 from cfn_typed.policy import (
-    ANY, GlobalKeys, arn_like, aws, bool_, condition, ip_address, merge_conditions, service, string_equals, string_like,
+    ANY, GlobalKeys, arn_like, arn_not_equals, arn_not_like, aws, binary_equals, bool_, condition, date_equals,
+    date_greater_than, date_less_than, ip_address, merge_conditions, not_ip_address, null, numeric_greater_than_equals,
+    numeric_less_than, service, string_equals, string_equals_ignore_case, string_like, string_not_equals_ignore_case,
 )
 
 
@@ -42,6 +45,24 @@ def test_conditions_normalise_booleans_and_numbers_and_keep_intrinsics() -> None
     assert string_equals(GlobalKeys.SourceAccount, ref) == {"StringEquals": {"aws:SourceAccount": ref}}
     assert string_like("aws:PrincipalArn", ["a*", ref]) == {"StringLike": {"aws:PrincipalArn": ["a*", ref]}}
     assert ip_address("aws:SourceIp", "10.0.0.0/8") == {"IpAddress": {"aws:SourceIp": "10.0.0.0/8"}}
+
+
+def test_the_remaining_operator_builders() -> None:
+    assert numeric_less_than("s3:max-keys", 100) == {"NumericLessThan": {"s3:max-keys": "100"}}
+    assert numeric_greater_than_equals("k", [1, 2], for_any_value=True) == {"ForAnyValue:NumericGreaterThanEquals": {"k": ["1", "2"]}}
+    when = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone(timedelta(hours=2)))
+    assert date_less_than("aws:CurrentTime", when) == {"DateLessThan": {"aws:CurrentTime": "2026-01-02T01:04:05Z"}}
+    assert date_equals("aws:CurrentTime", "1767225600") == {"DateEquals": {"aws:CurrentTime": "1767225600"}}
+    with pytest.raises(ValueError, match="timezone"):
+        date_greater_than("aws:CurrentTime", datetime(2026, 1, 1))
+    assert null("aws:TokenIssueTime") == {"Null": {"aws:TokenIssueTime": "true"}}
+    assert null("aws:TokenIssueTime", False) == {"Null": {"aws:TokenIssueTime": "false"}}
+    assert not_ip_address("aws:SourceIp", "10.0.0.0/8") == {"NotIpAddress": {"aws:SourceIp": "10.0.0.0/8"}}
+    assert arn_not_like("aws:SourceArn", "arn:*") == {"ArnNotLike": {"aws:SourceArn": "arn:*"}}
+    assert arn_not_equals("aws:SourceArn", "arn:a") == {"ArnNotEquals": {"aws:SourceArn": "arn:a"}}
+    assert string_equals_ignore_case("k", "V") == {"StringEqualsIgnoreCase": {"k": "V"}}
+    assert string_not_equals_ignore_case("k", "V") == {"StringNotEqualsIgnoreCase": {"k": "V"}}
+    assert binary_equals("k", "dGVzdA==") == {"BinaryEquals": {"k": "dGVzdA=="}}
 
 
 def test_qualifiers_and_their_mistakes() -> None:

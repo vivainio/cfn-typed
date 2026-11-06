@@ -27,7 +27,7 @@ def build(config: BucketConfig) -> cfn.Template:
         "BucketEncryption": {"ServerSideEncryptionConfiguration": [
             {"ServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}},
         ]},
-        "Tags": [{"Key": "DataClass", "Value": config.data_class}],
+        "Tags": cfn.tags(DataClass=config.data_class),
     }
     if config.archive_after_days is not None:
         props["LifecycleConfiguration"] = {"Rules": [{

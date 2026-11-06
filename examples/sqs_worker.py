@@ -21,7 +21,7 @@ class WorkerConfig:
 def build(config: WorkerConfig = WorkerConfig()) -> cfn.Template:
     params = cfn.Params()
     stage = params.string("Stage", default="dev", allowed_values=["dev", "test", "prod"])
-    tags: list[cfn.Expr[cfn.Tag]] = [{"Key": "Service", "Value": config.service}, {"Key": "Stage", "Value": stage}]
+    tags = cfn.tags(Service=config.service, Stage=stage)
     table = f"{config.table}-${{Stage}}"          # ${Stage} is resolved by CloudFormation, in Sub
 
     orders = queue_with_dlq("Order", visibility_timeout=180, tags=tags)

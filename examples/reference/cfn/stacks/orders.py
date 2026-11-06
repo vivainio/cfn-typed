@@ -19,7 +19,7 @@ class OrdersConfig:
 def build(config: OrdersConfig = OrdersConfig()) -> cfn.Template:
     params = cfn.Params()
     stage = params.string("Stage", default="dev", allowed_values=["dev", "test", "prod"])
-    jobs = queue_with_dlq("Jobs", visibility_timeout=config.visibility_timeout, tags=[{"Key": "Stage", "Value": stage}])
+    jobs = queue_with_dlq("Jobs", visibility_timeout=config.visibility_timeout, tags=cfn.tags(Stage=stage))
     return {
         "AWSTemplateFormatVersion": "2010-09-09",
         "Parameters": params.declarations(),

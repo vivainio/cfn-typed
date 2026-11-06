@@ -77,3 +77,11 @@ def test_core_page_lists_every_export() -> None:
     page = (Path(__file__).parent.parent / "docs" / "core.md").read_text()
     missing = [name for name in cfn.__all__ if f"`{name}`" not in page]
     assert not missing, f"docs/core.md does not mention: {', '.join(missing)}"
+
+
+def test_tags_accepts_intrinsic_values() -> None:
+    assert cfn.tags(Stage=cfn.ref("Stage"), Name=cfn.sub("${AWS::StackName}-q"), Owner="team") == [
+        {"Key": "Stage", "Value": {"Ref": "Stage"}},
+        {"Key": "Name", "Value": {"Fn::Sub": "${AWS::StackName}-q"}},
+        {"Key": "Owner", "Value": "team"},
+    ]

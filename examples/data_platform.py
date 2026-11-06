@@ -1,7 +1,7 @@
 """A stack that owns encrypted storage and publishes where it is, for other stacks to read."""
 
 import cfn_typed as cfn
-from cfn_typed import Expr, Tag, get_att, sub
+from cfn_typed import get_att, sub
 from cfn_typed_sumo.storage import dynamodb_table, encryption_key, publish, secure_bucket
 
 PREFIX = "/data-platform/storage"
@@ -12,7 +12,7 @@ def build() -> cfn.Template:
     params = cfn.Params()
     stage = params.string("Stage", default="dev", allowed_values=["dev", "test", "prod"])
     deploy_role = params.string("DeployRoleArn", description="The role that deploys this stack: it must keep bucket access")
-    tags: list[Expr[Tag]] = [{"Key": "Stage", "Value": stage}]
+    tags = cfn.tags(Stage=stage)
 
     return {
         "AWSTemplateFormatVersion": "2010-09-09",

@@ -7,7 +7,8 @@ from cfn_typed.base import AnyResource, HasResources, Resources, Tag
 from cfn_typed.intrinsics import Expr
 
 
-def tags(**kv: str) -> list[Expr[Tag]]:
+def tags(**kv: Expr[str]) -> list[Expr[Tag]]:
+    """A tag list from keyword arguments; a value may be a string or an intrinsic such as `cfn.ref` or `cfn.sub`."""
     return [{"Key": k, "Value": v} for k, v in kv.items()]
 
 

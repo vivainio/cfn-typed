@@ -29,6 +29,6 @@ def lock_down() -> s3.BucketProps:
 
 def audit_bucket(stage: Expr[str]) -> s3.Bucket:
     props = lock_down()
-    props["Tags"] = [{"Key": "Stage", "Value": stage}]
+    props["Tags"] = cfn.tags(Stage=stage)
     return s3.bucket(**props)
 # --8<-- [end:fragment]

@@ -20,7 +20,7 @@ def build(config: JobsConfig = JobsConfig()) -> cfn.Template:
         "AWSTemplateFormatVersion": "2010-09-09",
         "Parameters": params.declarations(),
         "Resources": {
-            "Jobs": sqs.queue(VisibilityTimeout=config.visibility_timeout, Tags=[{"Key": "Stage", "Value": stage}]),
+            "Jobs": sqs.queue(VisibilityTimeout=config.visibility_timeout, Tags=cfn.tags(Stage=stage)),
         },
         "Outputs": {"JobsUrl": {"Value": cfn.ref("Jobs")}},
     }

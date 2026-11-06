@@ -3,7 +3,7 @@
 # --8<-- [start:defaults]
 from typing import NamedTuple
 
-from cfn_typed import Expr, Params, Tag
+from cfn_typed import Expr, Params, Tag, tags
 from cfn_typed.intrinsics import Ref
 
 
@@ -22,5 +22,5 @@ def network(params: Params) -> Network:
 
 def standard_tags(params: Params) -> list[Expr[Tag]]:
     stage = params.string("Stage", default="dev", allowed_values=["dev", "test", "prod"])
-    return [{"Key": "Stage", "Value": stage}, {"Key": "ManagedBy", "Value": "cfn-typed"}]
+    return tags(Stage=stage, ManagedBy="cfn-typed")
 # --8<-- [end:defaults]

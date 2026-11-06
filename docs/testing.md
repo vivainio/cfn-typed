@@ -196,7 +196,7 @@ def test_orders_checks() -> None:
     assert_combinations_valid(template, acme_cfn) # exactly one of X or Y, A needs B
     assert_values_valid(template)                 # FindInMap keys, Select indexes, parameter defaults
     assert_runtimes_supported(template)           # no deprecated Lambda runtime
-    assert_iam_valid(template)                    # known actions, matching resources, S3 bucket vs object ARN
+    assert_iam_valid(template)                    # known actions, matching resources, S3 bucket vs object ARN, conditions
     assert_within_limits(template)                # 500 resources, 200 parameters, logical ID names, size
     assert_nothing_unused(template)               # no idle parameter, condition or mapping
     assert_state_machines_valid(template)         # Next/Catch targets exist, nothing unreachable, no loop without exit
@@ -212,7 +212,11 @@ properties must be set (about 150 rules on 100 resource types, 18 KB for all of 
 
 `assert_iam_valid` links each statement to the action lists in `cfn_typed.permissions` (12 services; others are left alone):
 the service of a resource type (`AWS::SQS::Queue` is `sqs`) is matched against the statement's action prefixes, and S3 object
-actions are told apart from bucket actions. `assert_runtimes_supported` uses support dates copied from cfn-lint
+actions are told apart from bucket actions. It also reads each `Condition`: an operator that does not exist (`StringLik`), an `Effect`
+that is not `Allow` or `Deny`, and a condition key of those services that does not exist (`s3:prefx`) or that none of the statement's
+actions of that service supports (`s3:prefix` beside `s3:GetObject`; it is a `ListBucket` key). The keys come from AWS's Service
+Authorization Reference (`scripts/sync-condition-keys.py` refreshes them). Global `aws:` keys and the values of a condition are not checked.
+`assert_runtimes_supported` uses support dates copied from cfn-lint
 (`scripts/sync-lambda-runtimes.py` refreshes them), so it goes stale like any data.
 
 `assert_attributes_exist` reads the `ATTRIBUTES` table that `cfn-typegen` writes next to `CONSTRAINTS`

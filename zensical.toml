@@ -51,6 +51,7 @@ nav = [
   ] },
   { "Permission names" = "permissions.md" },
   { "Policy statements" = "policy.md" },
+  { "Conditions" = "conditions.md" },
   { "State machines" = "state-machines.md" },
   { "Grants (opinion layer)" = "grants.md" },
   { "Rendered examples" = [

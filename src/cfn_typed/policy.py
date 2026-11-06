@@ -15,6 +15,7 @@ together is the job of `cfn_typed.grants`.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
+from datetime import UTC, datetime
 from typing import Any, Final, Literal, NotRequired, cast, overload
 
 from typing_extensions import TypedDict, Unpack
@@ -257,13 +258,17 @@ def _scalar(value: Any) -> Expr[str]:
         return "true" if value else "false"
     if isinstance(value, int):
         return str(value)
+    if isinstance(value, datetime):  # IAM dates are ISO 8601 in UTC
+        if value.tzinfo is None:
+            raise ValueError("a condition date needs a timezone, such as datetime(..., tzinfo=UTC)")
+        return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     if isinstance(value, (str, dict)):  # a string, or an intrinsic such as a Ref
         return value
     raise TypeError(f"a condition value is a string, number, bool or intrinsic, got {type(value).__name__}")
 
 
 def _values(value: Any) -> Expr[str] | list[Expr[str]]:
-    if isinstance(value, (bool, int, str, dict)):
+    if isinstance(value, (bool, int, str, dict, datetime)):
         return _scalar(value)
     return [_scalar(v) for v in value]
 
@@ -271,7 +276,7 @@ def _values(value: Any) -> Expr[str] | list[Expr[str]]:
 def condition(
     operator: Operator,
     key: str,
-    values: Expr[str] | bool | int | Sequence[Expr[str]],
+    values: Expr[str] | bool | int | datetime | Sequence[Expr[str] | int | datetime],
     *,
     for_any_value: bool = False,
     for_all_values: bool = False,
@@ -324,6 +329,89 @@ def bool_(key: str, value: bool, **q: Unpack[Qualifiers]) -> Condition:
 
 def ip_address(key: str, cidrs: Expr[str] | Sequence[Expr[str]], **q: Unpack[Qualifiers]) -> Condition:
     return condition("IpAddress", key, cidrs, **q)
+
+
+def string_equals_ignore_case(key: str, values: Expr[str] | Sequence[Expr[str]], **q: Unpack[Qualifiers]) -> Condition:
+    return condition("StringEqualsIgnoreCase", key, values, **q)
+
+
+def string_not_equals_ignore_case(key: str, values: Expr[str] | Sequence[Expr[str]], **q: Unpack[Qualifiers]) -> Condition:
+    return condition("StringNotEqualsIgnoreCase", key, values, **q)
+
+
+def arn_not_equals(key: str, values: Expr[str] | Sequence[Expr[str]], **q: Unpack[Qualifiers]) -> Condition:
+    return condition("ArnNotEquals", key, values, **q)
+
+
+def arn_not_like(key: str, values: Expr[str] | Sequence[Expr[str]], **q: Unpack[Qualifiers]) -> Condition:
+    return condition("ArnNotLike", key, values, **q)
+
+
+def not_ip_address(key: str, cidrs: Expr[str] | Sequence[Expr[str]], **q: Unpack[Qualifiers]) -> Condition:
+    return condition("NotIpAddress", key, cidrs, **q)
+
+
+def binary_equals(key: str, values: Expr[str] | Sequence[Expr[str]], **q: Unpack[Qualifiers]) -> Condition:
+    """`values` are base64 strings, as IAM compares them."""
+    return condition("BinaryEquals", key, values, **q)
+
+
+def null(key: str, is_null: bool = True) -> Condition:
+    """`null("aws:TokenIssueTime")` holds when the key is absent from the request; `is_null=False` when it is present."""
+    return condition("Null", key, is_null)
+
+
+type _Numbers = Expr[str] | int | Sequence[Expr[str] | int]
+type _Dates = Expr[str] | datetime | Sequence[Expr[str] | datetime]
+
+
+def numeric_equals(key: str, values: _Numbers, **q: Unpack[Qualifiers]) -> Condition:
+    return condition("NumericEquals", key, values, **q)
+
+
+def numeric_not_equals(key: str, values: _Numbers, **q: Unpack[Qualifiers]) -> Condition:
+    return condition("NumericNotEquals", key, values, **q)
+
+
+def numeric_less_than(key: str, values: _Numbers, **q: Unpack[Qualifiers]) -> Condition:
+    return condition("NumericLessThan", key, values, **q)
+
+
+def numeric_less_than_equals(key: str, values: _Numbers, **q: Unpack[Qualifiers]) -> Condition:
+    return condition("NumericLessThanEquals", key, values, **q)
+
+
+def numeric_greater_than(key: str, values: _Numbers, **q: Unpack[Qualifiers]) -> Condition:
+    return condition("NumericGreaterThan", key, values, **q)
+
+
+def numeric_greater_than_equals(key: str, values: _Numbers, **q: Unpack[Qualifiers]) -> Condition:
+    return condition("NumericGreaterThanEquals", key, values, **q)
+
+
+def date_equals(key: str, values: _Dates, **q: Unpack[Qualifiers]) -> Condition:
+    """The date builders take a timezone-aware `datetime` (written as UTC ISO 8601), or a string such as an epoch."""
+    return condition("DateEquals", key, values, **q)
+
+
+def date_not_equals(key: str, values: _Dates, **q: Unpack[Qualifiers]) -> Condition:
+    return condition("DateNotEquals", key, values, **q)
+
+
+def date_less_than(key: str, values: _Dates, **q: Unpack[Qualifiers]) -> Condition:
+    return condition("DateLessThan", key, values, **q)
+
+
+def date_less_than_equals(key: str, values: _Dates, **q: Unpack[Qualifiers]) -> Condition:
+    return condition("DateLessThanEquals", key, values, **q)
+
+
+def date_greater_than(key: str, values: _Dates, **q: Unpack[Qualifiers]) -> Condition:
+    return condition("DateGreaterThan", key, values, **q)
+
+
+def date_greater_than_equals(key: str, values: _Dates, **q: Unpack[Qualifiers]) -> Condition:
+    return condition("DateGreaterThanEquals", key, values, **q)
 
 
 def merge_conditions(*conditions: Condition) -> Condition:

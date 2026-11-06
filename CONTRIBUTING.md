@@ -29,6 +29,19 @@ Adding a service adds its **names** only. The [grants](https://vivainio.github.i
 the AWS CDK by `scripts/sync-cdk-grants.py`, so a service gets grants only if the CDK has them, and that is a separate
 change.
 
+## Refreshing the IAM condition keys
+
+`cfn_typed.iam` checks the condition keys of a statement against `src/cfn_typed/_condition_keys.py`, which comes from AWS's
+Service Authorization Reference for the services in `cfn_typed.permissions`. A new service in `permissions.py` gets its keys
+the next time you run the script, which needs no dependencies:
+
+```sh
+uv run scripts/sync-condition-keys.py
+```
+
+Commit the regenerated module. AWS adds keys over time, so a key that is new since the last run is reported as unknown until
+you rerun it.
+
 ## Everything else
 
 Facts, such as the generated types and the permission names, and opinions, such as grants and patterns, are kept

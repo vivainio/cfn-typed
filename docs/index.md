@@ -61,6 +61,7 @@ can drop them without touching the facts.
 | [The core](core.md) | template types, intrinsics, `combine`, `Params`, rendering | mechanics, no opinion: stable |
 | [Permission names](permissions.md) | names of IAM actions, taken from awacs | facts: stable |
 | [Policy statements](policy.md) | builders for principals, conditions, allow and deny | mechanics, no opinion: stable |
+| [Conditions](conditions.md) | building and checking IAM conditions | mechanics, no opinion: stable |
 | [Grants](grants.md) | the CDK's permission sets | **opinion: unstable, marked as such** |
 | [Patterns](patterns/index.md) | a secure bucket, a load balancer, ... | **opinion: examples to copy, not an API** |
 | [cfn-typed-sumo](sumo.md) | the patterns and generated types as a package | **opinion: a fat library with a volatile API** |
